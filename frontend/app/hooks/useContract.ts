@@ -6,41 +6,135 @@ import { useWalletContext } from '../context/WalletContext';
 
 // Contract addresses - update these after deployment
 export const CONTRACT_ADDRESSES = {
-  printEscrow: process.env.NEXT_PUBLIC_PRINT_ESCROW_ADDRESS || '',
+  factory: process.env.NEXT_PUBLIC_ESCROW_FACTORY_ADDRESS || '',
 } as const;
 
-// Placeholder ABI - replace with actual ABI after contract development
-// This is a minimal example showing expected contract interface
-export const PRINT_ESCROW_ABI = [
-  // Create a new print order (buyer calls this)
-  'function createOrder(string fileHash, string material, uint256 infill) payable returns (uint256 orderId)',
-  // Claim an order (seller calls this)
-  'function claimOrder(uint256 orderId) external',
-  // Mark order as shipped (seller calls this)
-  'function markShipped(uint256 orderId, string trackingInfo) external',
-  // Confirm delivery and release escrow (buyer calls this)
-  'function confirmDelivery(uint256 orderId) external',
-  // Raise a dispute (buyer or seller can call)
-  'function raiseDispute(uint256 orderId, string reason) external',
-  // View functions
-  'function getOrder(uint256 orderId) view returns (tuple(address buyer, address seller, uint256 escrowAmount, uint8 status, string fileHash))',
-  'function getOrderCount() view returns (uint256)',
-  // Events
-  'event OrderCreated(uint256 indexed orderId, address indexed buyer, uint256 escrowAmount)',
-  'event OrderClaimed(uint256 indexed orderId, address indexed seller)',
-  'event OrderShipped(uint256 indexed orderId, string trackingInfo)',
-  'event OrderDelivered(uint256 indexed orderId)',
-  'event DisputeRaised(uint256 indexed orderId, address indexed raisedBy, string reason)',
+// Factory ABI
+export const FACTORY_ABI = [
+  'function createOrder(bytes32 fileHash) payable returns (bytes32 orderId, address escrow)',
+  'function createOrderDeterministic(bytes32 fileHash, bytes32 salt) payable returns (bytes32 orderId, address escrow)',
+  'function predictAddress(bytes32 salt) view returns (address)',
+  'function getEscrow(bytes32 orderId) view returns (address)',
+  'function escrows(bytes32 orderId) view returns (address)',
+  'function totalOrders() view returns (uint256)',
+  'function getEscrows(uint256 offset, uint256 limit) view returns (address[])',
+  'function platform() view returns (address)',
+  'function arbiter() view returns (address)',
+  'function minOrderAmount() view returns (uint256)',
+  'event OrderCreated(bytes32 indexed orderId, address indexed escrow, address indexed buyer, uint256 amount, bytes32 fileHash)',
 ] as const;
 
+// Escrow Instance ABI
+export const ESCROW_ABI = [
+  // View functions
+  'function buyer() view returns (address)',
+  'function seller() view returns (address)',
+  'function status() view returns (uint8)',
+  'function orderId() view returns (bytes32)',
+  'function orderAmount() view returns (uint256)',
+  'function gasCushion() view returns (uint256)',
+  'function platformFee() view returns (uint256)',
+  'function gasUsed() view returns (uint256)',
+  'function createdAt() view returns (uint256)',
+  'function claimedAt() view returns (uint256)',
+  'function shippedAt() view returns (uint256)',
+  'function arrivedAt() view returns (uint256)',
+  'function disputeRound() view returns (uint8)',
+  'function lastOfferBuyerPercent() view returns (uint8)',
+  'function lastOfferAt() view returns (uint256)',
+  'function lastOfferBy() view returns (address)',
+  'function currentOffer() view returns (uint8 pct, uint256 timestamp, address offerer)',
+  'function isBuyerTurn() view returns (bool)',
+  'function timeRemaining() view returns (uint256)',
+  // Buyer actions
+  'function cancel()',
+  'function openDispute()',
+  'function submitOffer(uint8 pct)',
+  'function acceptOffer()',
+  'function rejectFinalOffer()',
+  // Seller actions
+  'function claim()',
+  'function markShipped()',
+  'function claimDelivery()',
+  'function submitCounterOffer(uint8 pct)',
+  'function acceptBuyerOffer()',
+  // Public actions
+  'function confirmDeliveryViaOracle()',
+  'function finalizeOrder()',
+  'function finalizeOffer()',
+  'function finalizeArbiter()',
+  // Arbiter action
+  'function arbiterDecide(uint8 pct)',
+  // Events
+  'event OrderClaimed(address indexed seller, uint256 timestamp)',
+  'event OrderShipped(uint256 timestamp)',
+  'event DeliveryConfirmed(uint256 timestamp, bool byOracle)',
+  'event OrderCompleted(uint256 sellerPayout, uint256 buyerRefund)',
+  'event OrderCancelled(uint256 buyerRefund, uint256 platformFee)',
+  'event DisputeOpened(uint256 timestamp)',
+  'event OfferSubmitted(address indexed by, uint8 round, uint8 buyerPercent)',
+  'event OfferAccepted(uint8 round, uint8 buyerPercent)',
+  'event OfferAutoAccepted(uint8 round, uint8 buyerPercent)',
+  'event ArbiterDecision(uint8 buyerPercent, uint8 sellerPercent)',
+  'event ArbiterReviewStarted(uint256 timestamp)',
+  'event GasReimbursed(address indexed to, uint256 amount)',
+] as const;
+
+// Status enum matching contract
+export enum EscrowStatus {
+  Pending = 0,
+  Claimed = 1,
+  Shipped = 2,
+  Arrived = 3,
+  Completed = 4,
+  Cancelled = 5,
+  InDispute = 6,
+  ArbiterReview = 7,
+  Settled = 8,
+}
+
+export const STATUS_LABELS: Record<EscrowStatus, string> = {
+  [EscrowStatus.Pending]: 'Pending',
+  [EscrowStatus.Claimed]: 'Claimed',
+  [EscrowStatus.Shipped]: 'Shipped',
+  [EscrowStatus.Arrived]: 'Arrived',
+  [EscrowStatus.Completed]: 'Completed',
+  [EscrowStatus.Cancelled]: 'Cancelled',
+  [EscrowStatus.InDispute]: 'In Dispute',
+  [EscrowStatus.ArbiterReview]: 'Arbiter Review',
+  [EscrowStatus.Settled]: 'Settled',
+};
+
 interface UseContractOptions {
-  requiredRole?: 'buyer' | 'seller';
+  requiredRole?: 'buyer' | 'seller' | 'arbiter';
 }
 
 interface ContractCallResult<T> {
   data: T | null;
   error: string | null;
   isLoading: boolean;
+}
+
+export interface EscrowData {
+  address: string;
+  buyer: string;
+  seller: string;
+  status: EscrowStatus;
+  orderId: string;
+  orderAmount: string;
+  gasCushion: string;
+  platformFee: string;
+  gasUsed: string;
+  createdAt: number;
+  claimedAt: number;
+  shippedAt: number;
+  arrivedAt: number;
+  disputeRound: number;
+  lastOfferBuyerPercent: number;
+  lastOfferAt: number;
+  lastOfferBy: string;
+  isBuyerTurn: boolean;
+  timeRemaining: number;
 }
 
 /**
@@ -59,20 +153,18 @@ export function useProvider() {
 
 /**
  * Hook to get a signer with role verification
- * Ensures the active MetaMask account matches the expected role
  */
 export function useSigner() {
   const { roleWallets, currentRole } = useWalletContext();
   const { getProvider } = useProvider();
 
-  const getSigner = useCallback(async (requiredRole?: 'buyer' | 'seller') => {
+  const getSigner = useCallback(async (requiredRole?: 'buyer' | 'seller' | 'arbiter') => {
     const provider = getProvider();
     const signer = await provider.getSigner();
     const signerAddress = (await signer.getAddress()).toLowerCase();
 
-    // If a specific role is required, verify the wallet matches
     const roleToCheck = requiredRole || currentRole;
-    const expectedAddress = roleWallets[roleToCheck];
+    const expectedAddress = roleWallets[roleToCheck as keyof typeof roleWallets];
 
     if (expectedAddress && signerAddress !== expectedAddress) {
       throw new Error(
@@ -89,7 +181,7 @@ export function useSigner() {
 }
 
 /**
- * Hook to get a contract instance
+ * Hook to get contract instances
  */
 export function useContractInstance() {
   const { getSigner } = useSigner();
@@ -100,7 +192,6 @@ export function useContractInstance() {
     abi: readonly string[],
     options?: UseContractOptions
   ) => {
-    // Get signer with role verification
     const signer = await getSigner(options?.requiredRole);
     return new ethers.Contract(address, abi, signer);
   }, [getSigner]);
@@ -113,51 +204,56 @@ export function useContractInstance() {
   return { getContract, getReadOnlyContract };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// FACTORY HOOKS
+// ═══════════════════════════════════════════════════════════════════════════
+
 /**
  * Hook for creating a print order (buyer action)
  */
 export function useCreateOrder() {
   const { getContract } = useContractInstance();
-  const [state, setState] = useState<ContractCallResult<{ orderId: string; txHash: string }>>({
+  const [state, setState] = useState<ContractCallResult<{ orderId: string; escrowAddress: string; txHash: string }>>({
     data: null,
     error: null,
     isLoading: false,
   });
 
-  const createOrder = useCallback(async (
-    fileHash: string,
-    material: string,
-    infill: number,
-    escrowAmountEth: string
-  ) => {
+  const createOrder = useCallback(async (fileHash: string, totalAmountEth: string) => {
     setState({ data: null, error: null, isLoading: true });
 
     try {
       const contract = await getContract(
-        CONTRACT_ADDRESSES.printEscrow,
-        PRINT_ESCROW_ABI,
+        CONTRACT_ADDRESSES.factory,
+        FACTORY_ABI,
         { requiredRole: 'buyer' }
       );
 
-      const tx = await contract.createOrder(fileHash, material, infill, {
-        value: ethers.parseEther(escrowAmountEth),
+      // Convert file hash to bytes32 if it's not already
+      const hashBytes = fileHash.startsWith('0x') 
+        ? fileHash 
+        : ethers.keccak256(ethers.toUtf8Bytes(fileHash));
+
+      const tx = await contract.createOrder(hashBytes, {
+        value: ethers.parseEther(totalAmountEth),
       });
 
       const receipt = await tx.wait();
       
-      // Parse OrderCreated event to get orderId
       const event = receipt.logs.find(
         (log: { fragment?: { name: string } }) => log.fragment?.name === 'OrderCreated'
       );
-      const orderId = event?.args?.[0]?.toString() || 'unknown';
+      
+      const orderId = event?.args?.orderId || 'unknown';
+      const escrowAddress = event?.args?.escrow || 'unknown';
 
       setState({
-        data: { orderId, txHash: receipt.hash },
+        data: { orderId, escrowAddress, txHash: receipt.hash },
         error: null,
         isLoading: false,
       });
 
-      return { orderId, txHash: receipt.hash };
+      return { orderId, escrowAddress, txHash: receipt.hash };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
       setState({ data: null, error: errorMessage, isLoading: false });
@@ -169,35 +265,154 @@ export function useCreateOrder() {
 }
 
 /**
- * Hook for claiming an order (seller action)
+ * Hook for reading factory info
  */
-export function useClaimOrder() {
-  const { getContract } = useContractInstance();
-  const [state, setState] = useState<ContractCallResult<{ txHash: string }>>({
+export function useFactoryInfo() {
+  const { getReadOnlyContract } = useContractInstance();
+  const [state, setState] = useState<ContractCallResult<{
+    totalOrders: number;
+    platform: string;
+    arbiter: string;
+    minOrderAmount: string;
+  }>>({
     data: null,
     error: null,
     isLoading: false,
   });
 
-  const claimOrder = useCallback(async (orderId: string) => {
+  const readFactoryInfo = useCallback(async () => {
     setState({ data: null, error: null, isLoading: true });
 
     try {
-      const contract = await getContract(
-        CONTRACT_ADDRESSES.printEscrow,
-        PRINT_ESCROW_ABI,
-        { requiredRole: 'seller' }
-      );
+      const contract = getReadOnlyContract(CONTRACT_ADDRESSES.factory, FACTORY_ABI);
 
-      const tx = await contract.claimOrder(orderId);
+      const [totalOrders, platform, arbiter, minOrderAmount] = await Promise.all([
+        contract.totalOrders(),
+        contract.platform(),
+        contract.arbiter(),
+        contract.minOrderAmount(),
+      ]);
+
+      const data = {
+        totalOrders: Number(totalOrders),
+        platform,
+        arbiter,
+        minOrderAmount: ethers.formatEther(minOrderAmount),
+      };
+
+      setState({ data, error: null, isLoading: false });
+      return data;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to read factory';
+      setState({ data: null, error: errorMessage, isLoading: false });
+      throw err;
+    }
+  }, [getReadOnlyContract]);
+
+  return { readFactoryInfo, ...state };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ESCROW READ HOOKS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Hook for reading escrow data
+ */
+export function useReadEscrow() {
+  const { getReadOnlyContract } = useContractInstance();
+  const [state, setState] = useState<ContractCallResult<EscrowData>>({
+    data: null,
+    error: null,
+    isLoading: false,
+  });
+
+  const readEscrow = useCallback(async (escrowAddress: string) => {
+    setState({ data: null, error: null, isLoading: true });
+
+    try {
+      const contract = getReadOnlyContract(escrowAddress, ESCROW_ABI);
+
+      const [
+        buyer, seller, status, orderId, orderAmount, gasCushion,
+        platformFee, gasUsed, createdAt, claimedAt, shippedAt, arrivedAt,
+        disputeRound, lastOfferBuyerPercent, lastOfferAt, lastOfferBy,
+        isBuyerTurn, timeRemaining
+      ] = await Promise.all([
+        contract.buyer(),
+        contract.seller(),
+        contract.status(),
+        contract.orderId(),
+        contract.orderAmount(),
+        contract.gasCushion(),
+        contract.platformFee(),
+        contract.gasUsed(),
+        contract.createdAt(),
+        contract.claimedAt(),
+        contract.shippedAt(),
+        contract.arrivedAt(),
+        contract.disputeRound(),
+        contract.lastOfferBuyerPercent(),
+        contract.lastOfferAt(),
+        contract.lastOfferBy(),
+        contract.isBuyerTurn(),
+        contract.timeRemaining(),
+      ]);
+
+      const data: EscrowData = {
+        address: escrowAddress,
+        buyer,
+        seller,
+        status: Number(status) as EscrowStatus,
+        orderId,
+        orderAmount: ethers.formatEther(orderAmount),
+        gasCushion: ethers.formatEther(gasCushion),
+        platformFee: ethers.formatEther(platformFee),
+        gasUsed: ethers.formatEther(gasUsed),
+        createdAt: Number(createdAt),
+        claimedAt: Number(claimedAt),
+        shippedAt: Number(shippedAt),
+        arrivedAt: Number(arrivedAt),
+        disputeRound: Number(disputeRound),
+        lastOfferBuyerPercent: Number(lastOfferBuyerPercent),
+        lastOfferAt: Number(lastOfferAt),
+        lastOfferBy,
+        isBuyerTurn,
+        timeRemaining: Number(timeRemaining),
+      };
+
+      setState({ data, error: null, isLoading: false });
+      return data;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to read escrow';
+      setState({ data: null, error: errorMessage, isLoading: false });
+      throw err;
+    }
+  }, [getReadOnlyContract]);
+
+  return { readEscrow, ...state };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BUYER ACTION HOOKS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Hook for cancelling order (buyer action, before claim)
+ */
+export function useCancel() {
+  const { getContract } = useContractInstance();
+  const [state, setState] = useState<ContractCallResult<{ txHash: string }>>({
+    data: null, error: null, isLoading: false,
+  });
+
+  const cancel = useCallback(async (escrowAddress: string) => {
+    setState({ data: null, error: null, isLoading: true });
+    try {
+      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'buyer' });
+      const tx = await contract.cancel();
       const receipt = await tx.wait();
-
-      setState({
-        data: { txHash: receipt.hash },
-        error: null,
-        isLoading: false,
-      });
-
+      setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
       return { txHash: receipt.hash };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
@@ -206,39 +421,164 @@ export function useClaimOrder() {
     }
   }, [getContract]);
 
-  return { claimOrder, ...state };
+  return { cancel, ...state };
 }
 
 /**
- * Hook for marking order as shipped (seller action)
+ * Hook for opening dispute (buyer action)
+ */
+export function useOpenDispute() {
+  const { getContract } = useContractInstance();
+  const [state, setState] = useState<ContractCallResult<{ txHash: string }>>({
+    data: null, error: null, isLoading: false,
+  });
+
+  const openDispute = useCallback(async (escrowAddress: string) => {
+    setState({ data: null, error: null, isLoading: true });
+    try {
+      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'buyer' });
+      const tx = await contract.openDispute();
+      const receipt = await tx.wait();
+      setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
+      return { txHash: receipt.hash };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      setState({ data: null, error: errorMessage, isLoading: false });
+      throw err;
+    }
+  }, [getContract]);
+
+  return { openDispute, ...state };
+}
+
+/**
+ * Hook for submitting offer (buyer action)
+ */
+export function useSubmitOffer() {
+  const { getContract } = useContractInstance();
+  const [state, setState] = useState<ContractCallResult<{ txHash: string }>>({
+    data: null, error: null, isLoading: false,
+  });
+
+  const submitOffer = useCallback(async (escrowAddress: string, buyerPercent: number) => {
+    setState({ data: null, error: null, isLoading: true });
+    try {
+      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'buyer' });
+      const tx = await contract.submitOffer(buyerPercent);
+      const receipt = await tx.wait();
+      setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
+      return { txHash: receipt.hash };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      setState({ data: null, error: errorMessage, isLoading: false });
+      throw err;
+    }
+  }, [getContract]);
+
+  return { submitOffer, ...state };
+}
+
+/**
+ * Hook for accepting seller's offer (buyer action)
+ */
+export function useAcceptOffer() {
+  const { getContract } = useContractInstance();
+  const [state, setState] = useState<ContractCallResult<{ txHash: string }>>({
+    data: null, error: null, isLoading: false,
+  });
+
+  const acceptOffer = useCallback(async (escrowAddress: string) => {
+    setState({ data: null, error: null, isLoading: true });
+    try {
+      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'buyer' });
+      const tx = await contract.acceptOffer();
+      const receipt = await tx.wait();
+      setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
+      return { txHash: receipt.hash };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      setState({ data: null, error: errorMessage, isLoading: false });
+      throw err;
+    }
+  }, [getContract]);
+
+  return { acceptOffer, ...state };
+}
+
+/**
+ * Hook for rejecting final offer and escalating to arbiter (buyer action)
+ */
+export function useRejectFinalOffer() {
+  const { getContract } = useContractInstance();
+  const [state, setState] = useState<ContractCallResult<{ txHash: string }>>({
+    data: null, error: null, isLoading: false,
+  });
+
+  const rejectFinalOffer = useCallback(async (escrowAddress: string) => {
+    setState({ data: null, error: null, isLoading: true });
+    try {
+      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'buyer' });
+      const tx = await contract.rejectFinalOffer();
+      const receipt = await tx.wait();
+      setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
+      return { txHash: receipt.hash };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      setState({ data: null, error: errorMessage, isLoading: false });
+      throw err;
+    }
+  }, [getContract]);
+
+  return { rejectFinalOffer, ...state };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SELLER ACTION HOOKS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Hook for claiming order (seller action)
+ */
+export function useClaim() {
+  const { getContract } = useContractInstance();
+  const [state, setState] = useState<ContractCallResult<{ txHash: string }>>({
+    data: null, error: null, isLoading: false,
+  });
+
+  const claim = useCallback(async (escrowAddress: string) => {
+    setState({ data: null, error: null, isLoading: true });
+    try {
+      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'seller' });
+      const tx = await contract.claim();
+      const receipt = await tx.wait();
+      setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
+      return { txHash: receipt.hash };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      setState({ data: null, error: errorMessage, isLoading: false });
+      throw err;
+    }
+  }, [getContract]);
+
+  return { claim, ...state };
+}
+
+/**
+ * Hook for marking shipped (seller action)
  */
 export function useMarkShipped() {
   const { getContract } = useContractInstance();
   const [state, setState] = useState<ContractCallResult<{ txHash: string }>>({
-    data: null,
-    error: null,
-    isLoading: false,
+    data: null, error: null, isLoading: false,
   });
 
-  const markShipped = useCallback(async (orderId: string, trackingInfo: string) => {
+  const markShipped = useCallback(async (escrowAddress: string) => {
     setState({ data: null, error: null, isLoading: true });
-
     try {
-      const contract = await getContract(
-        CONTRACT_ADDRESSES.printEscrow,
-        PRINT_ESCROW_ABI,
-        { requiredRole: 'seller' }
-      );
-
-      const tx = await contract.markShipped(orderId, trackingInfo);
+      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'seller' });
+      const tx = await contract.markShipped();
       const receipt = await tx.wait();
-
-      setState({
-        data: { txHash: receipt.hash },
-        error: null,
-        isLoading: false,
-      });
-
+      setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
       return { txHash: receipt.hash };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
@@ -251,35 +591,21 @@ export function useMarkShipped() {
 }
 
 /**
- * Hook for confirming delivery (buyer action)
+ * Hook for claiming delivery (seller action)
  */
-export function useConfirmDelivery() {
+export function useClaimDelivery() {
   const { getContract } = useContractInstance();
   const [state, setState] = useState<ContractCallResult<{ txHash: string }>>({
-    data: null,
-    error: null,
-    isLoading: false,
+    data: null, error: null, isLoading: false,
   });
 
-  const confirmDelivery = useCallback(async (orderId: string) => {
+  const claimDelivery = useCallback(async (escrowAddress: string) => {
     setState({ data: null, error: null, isLoading: true });
-
     try {
-      const contract = await getContract(
-        CONTRACT_ADDRESSES.printEscrow,
-        PRINT_ESCROW_ABI,
-        { requiredRole: 'buyer' }
-      );
-
-      const tx = await contract.confirmDelivery(orderId);
+      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'seller' });
+      const tx = await contract.claimDelivery();
       const receipt = await tx.wait();
-
-      setState({
-        data: { txHash: receipt.hash },
-        error: null,
-        isLoading: false,
-      });
-
+      setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
       return { txHash: receipt.hash };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
@@ -288,54 +614,208 @@ export function useConfirmDelivery() {
     }
   }, [getContract]);
 
-  return { confirmDelivery, ...state };
+  return { claimDelivery, ...state };
 }
 
 /**
- * Hook for reading order data (no wallet required)
+ * Hook for submitting counter-offer (seller action)
  */
-export function useReadOrder() {
-  const { getReadOnlyContract } = useContractInstance();
-  const [state, setState] = useState<ContractCallResult<{
-    buyer: string;
-    seller: string;
-    escrowAmount: string;
-    status: number;
-    fileHash: string;
-  }>>({
-    data: null,
-    error: null,
-    isLoading: false,
+export function useSubmitCounterOffer() {
+  const { getContract } = useContractInstance();
+  const [state, setState] = useState<ContractCallResult<{ txHash: string }>>({
+    data: null, error: null, isLoading: false,
   });
 
-  const readOrder = useCallback(async (orderId: string) => {
+  const submitCounterOffer = useCallback(async (escrowAddress: string, buyerPercent: number) => {
     setState({ data: null, error: null, isLoading: true });
-
     try {
-      const contract = getReadOnlyContract(
-        CONTRACT_ADDRESSES.printEscrow,
-        PRINT_ESCROW_ABI
-      );
-
-      const order = await contract.getOrder(orderId);
-
-      const data = {
-        buyer: order.buyer,
-        seller: order.seller,
-        escrowAmount: ethers.formatEther(order.escrowAmount),
-        status: Number(order.status),
-        fileHash: order.fileHash,
-      };
-
-      setState({ data, error: null, isLoading: false });
-      return data;
+      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'seller' });
+      const tx = await contract.submitCounterOffer(buyerPercent);
+      const receipt = await tx.wait();
+      setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
+      return { txHash: receipt.hash };
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to read order';
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
       setState({ data: null, error: errorMessage, isLoading: false });
       throw err;
     }
-  }, [getReadOnlyContract]);
+  }, [getContract]);
 
-  return { readOrder, ...state };
+  return { submitCounterOffer, ...state };
 }
 
+/**
+ * Hook for accepting buyer's offer (seller action)
+ */
+export function useAcceptBuyerOffer() {
+  const { getContract } = useContractInstance();
+  const [state, setState] = useState<ContractCallResult<{ txHash: string }>>({
+    data: null, error: null, isLoading: false,
+  });
+
+  const acceptBuyerOffer = useCallback(async (escrowAddress: string) => {
+    setState({ data: null, error: null, isLoading: true });
+    try {
+      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'seller' });
+      const tx = await contract.acceptBuyerOffer();
+      const receipt = await tx.wait();
+      setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
+      return { txHash: receipt.hash };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      setState({ data: null, error: errorMessage, isLoading: false });
+      throw err;
+    }
+  }, [getContract]);
+
+  return { acceptBuyerOffer, ...state };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PUBLIC ACTION HOOKS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Hook for finalizing order (anyone can call after 7 days)
+ */
+export function useFinalizeOrder() {
+  const { getContract } = useContractInstance();
+  const [state, setState] = useState<ContractCallResult<{ txHash: string }>>({
+    data: null, error: null, isLoading: false,
+  });
+
+  const finalizeOrder = useCallback(async (escrowAddress: string) => {
+    setState({ data: null, error: null, isLoading: true });
+    try {
+      const contract = await getContract(escrowAddress, ESCROW_ABI);
+      const tx = await contract.finalizeOrder();
+      const receipt = await tx.wait();
+      setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
+      return { txHash: receipt.hash };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      setState({ data: null, error: errorMessage, isLoading: false });
+      throw err;
+    }
+  }, [getContract]);
+
+  return { finalizeOrder, ...state };
+}
+
+/**
+ * Hook for finalizing offer on timeout (anyone can call)
+ */
+export function useFinalizeOffer() {
+  const { getContract } = useContractInstance();
+  const [state, setState] = useState<ContractCallResult<{ txHash: string }>>({
+    data: null, error: null, isLoading: false,
+  });
+
+  const finalizeOffer = useCallback(async (escrowAddress: string) => {
+    setState({ data: null, error: null, isLoading: true });
+    try {
+      const contract = await getContract(escrowAddress, ESCROW_ABI);
+      const tx = await contract.finalizeOffer();
+      const receipt = await tx.wait();
+      setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
+      return { txHash: receipt.hash };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      setState({ data: null, error: errorMessage, isLoading: false });
+      throw err;
+    }
+  }, [getContract]);
+
+  return { finalizeOffer, ...state };
+}
+
+/**
+ * Hook for finalizing arbiter timeout (anyone can call after 30 days)
+ */
+export function useFinalizeArbiter() {
+  const { getContract } = useContractInstance();
+  const [state, setState] = useState<ContractCallResult<{ txHash: string }>>({
+    data: null, error: null, isLoading: false,
+  });
+
+  const finalizeArbiter = useCallback(async (escrowAddress: string) => {
+    setState({ data: null, error: null, isLoading: true });
+    try {
+      const contract = await getContract(escrowAddress, ESCROW_ABI);
+      const tx = await contract.finalizeArbiter();
+      const receipt = await tx.wait();
+      setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
+      return { txHash: receipt.hash };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      setState({ data: null, error: errorMessage, isLoading: false });
+      throw err;
+    }
+  }, [getContract]);
+
+  return { finalizeArbiter, ...state };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ARBITER ACTION HOOKS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Hook for arbiter decision
+ */
+export function useArbiterDecide() {
+  const { getContract } = useContractInstance();
+  const [state, setState] = useState<ContractCallResult<{ txHash: string }>>({
+    data: null, error: null, isLoading: false,
+  });
+
+  const arbiterDecide = useCallback(async (escrowAddress: string, buyerPercent: number) => {
+    setState({ data: null, error: null, isLoading: true });
+    try {
+      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'arbiter' });
+      const tx = await contract.arbiterDecide(buyerPercent);
+      const receipt = await tx.wait();
+      setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
+      return { txHash: receipt.hash };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      setState({ data: null, error: errorMessage, isLoading: false });
+      throw err;
+    }
+  }, [getContract]);
+
+  return { arbiterDecide, ...state };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UTILITY HOOKS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Hook to lookup escrow address by order ID
+ */
+export function useLookupEscrow() {
+  const { getReadOnlyContract } = useContractInstance();
+
+  const lookupEscrow = useCallback(async (orderId: string) => {
+    const contract = getReadOnlyContract(CONTRACT_ADDRESSES.factory, FACTORY_ABI);
+    return await contract.getEscrow(orderId);
+  }, [getReadOnlyContract]);
+
+  return { lookupEscrow };
+}
+
+/**
+ * Format time remaining as human readable
+ */
+export function formatTimeRemaining(seconds: number): string {
+  if (seconds <= 0) return 'Expired';
+  
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+}

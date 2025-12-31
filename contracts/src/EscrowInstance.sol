@@ -126,6 +126,7 @@ contract EscrowInstance is IEscrowInstance, ReentrancyGuard {
         require(disputeRound == MAX_ROUNDS && lastOfferBy == seller, "!final");
         status = Status.ArbiterReview;
         arbiterReviewStartedAt = block.timestamp;
+        emit ArbiterReviewStarted(block.timestamp);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -190,12 +191,11 @@ contract EscrowInstance is IEscrowInstance, ReentrancyGuard {
     function finalizeOrder() external inStatus(Status.Arrived) reimburseGas nonReentrant {
         require(block.timestamp > arrivedAt + DISPUTE_WINDOW, "window");
         status = Status.Completed;
-        uint256 sellerPay = orderAmount - gasUsed;
         uint256 buyerRefund = gasCushion > gasUsed ? gasCushion - gasUsed : 0;
         _send(platform, platformFee);
-        if (sellerPay > 0) _send(seller, sellerPay);
+        _send(seller, orderAmount);  // Seller gets full orderAmount (gas came from cushion)
         if (buyerRefund > 0) _send(buyer, buyerRefund);
-        emit OrderCompleted(sellerPay, buyerRefund);
+        emit OrderCompleted(orderAmount, buyerRefund);
     }
 
     /// @notice Auto-accept on timeout

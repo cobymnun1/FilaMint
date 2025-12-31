@@ -15,6 +15,7 @@ interface IEscrowInstance {
     event OfferAccepted(uint8 round, uint8 buyerPercent);
     event OfferAutoAccepted(uint8 round, uint8 buyerPercent);
     event ArbiterDecision(uint8 buyerPercent, uint8 sellerPercent);
+    event ArbiterReviewStarted(uint256 timestamp);
     event GasReimbursed(address indexed to, uint256 amount);
 
     function buyer() external view returns (address);
