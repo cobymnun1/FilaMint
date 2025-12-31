@@ -2,11 +2,12 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-type ViewMode = 'buyer' | 'seller';
+type ViewMode = 'buyer' | 'seller' | 'arbiter';
 
 interface RoleWallets {
   buyer: string | null;
   seller: string | null;
+  arbiter: string | null;
 }
 
 interface WalletContextType {
@@ -30,6 +31,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [roleWallets, setRoleWallets] = useState<RoleWallets>({
     buyer: null,
     seller: null,
+    arbiter: null,
   });
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);

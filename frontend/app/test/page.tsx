@@ -145,6 +145,23 @@ function EscrowTestContent() {
     }
   };
 
+  const testConnectArbiter = async () => {
+    if (!checkMetaMask()) return;
+    log('Connecting arbiter wallet...');
+    try {
+      await connectWalletForRole('arbiter');
+      setTimeout(() => {
+        if (roleWallets.arbiter) {
+          log(`SUCCESS: Arbiter wallet connected: ${roleWallets.arbiter}`);
+        } else {
+          log('WARN: Connection may have been rejected or timed out');
+        }
+      }, 500);
+    } catch (err) {
+      log(`ERROR: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
   // Factory actions
   const testCreateOrder = async () => {
     log(`Creating order: ${fileHash} for ${orderAmount} ETH...`);
@@ -379,7 +396,7 @@ function EscrowTestContent() {
               {walletError}
             </div>
           )}
-          <div className="grid grid-cols-4 gap-4 text-sm mb-4">
+          <div className="grid grid-cols-5 gap-4 text-sm mb-4">
             <div>
               <p className="text-gray-400">Current Role</p>
               <p className="font-mono text-lg">{currentRole}</p>
@@ -402,6 +419,12 @@ function EscrowTestContent() {
                 {truncate(roleWallets.seller)}
               </p>
             </div>
+            <div>
+              <p className="text-gray-400">Arbiter</p>
+              <p className={`font-mono text-xs ${roleWallets.arbiter ? 'text-red-400' : 'text-gray-500'}`}>
+                {truncate(roleWallets.arbiter)}
+              </p>
+            </div>
           </div>
           <div className="flex gap-2 flex-wrap">
             <button onClick={() => setCurrentRole('buyer')}
@@ -412,26 +435,40 @@ function EscrowTestContent() {
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
                 currentRole === 'seller' ? 'bg-emerald-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}>Seller Mode</button>
+            <button onClick={() => setCurrentRole('arbiter')}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                currentRole === 'arbiter' ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}>Arbiter Mode</button>
+          </div>
+          <div className="flex gap-2 flex-wrap mt-2">
             <button onClick={testConnectBuyer} disabled={isConnecting}
               className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
-              {isConnecting ? 'Connecting...' : 'Connect Buyer'}
+              {isConnecting ? '...' : 'Connect Buyer'}
             </button>
             <button onClick={testConnectSeller} disabled={isConnecting}
               className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
-              {isConnecting ? 'Connecting...' : 'Connect Seller'}
+              {isConnecting ? '...' : 'Connect Seller'}
+            </button>
+            <button onClick={testConnectArbiter} disabled={isConnecting}
+              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
+              {isConnecting ? '...' : 'Connect Arbiter'}
             </button>
             <button onClick={() => { disconnectWalletForRole('buyer'); log('Buyer disconnected'); }}
               className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-sm font-medium transition">
-              Disconnect Buyer
+              Disc. Buyer
             </button>
             <button onClick={() => { disconnectWalletForRole('seller'); log('Seller disconnected'); }}
               className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-sm font-medium transition">
-              Disconnect Seller
+              Disc. Seller
+            </button>
+            <button onClick={() => { disconnectWalletForRole('arbiter'); log('Arbiter disconnected'); }}
+              className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-sm font-medium transition">
+              Disc. Arbiter
             </button>
           </div>
           <p className="mt-3 text-xs text-gray-500">
-            Tip: If you have multiple wallet extensions, try disabling all except MetaMask. 
-            Make sure MetaMask is unlocked and connected to localhost:8545 for Hardhat testing.
+            Tip: Use different Hardhat accounts for each role. Account #0 = Buyer, #1 = Seller, #2 = Arbiter.
+            Switch accounts in MetaMask before connecting each role.
           </p>
         </div>
 
