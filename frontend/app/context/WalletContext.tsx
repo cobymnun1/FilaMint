@@ -59,28 +59,57 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     try {
       // Check if MetaMask is available
       if (typeof window === 'undefined' || !window.ethereum) {
-        throw new Error('MetaMask not installed');
+        throw new Error('MetaMask not installed. Please install the MetaMask browser extension.');
       }
 
-      // Request account access - this will prompt MetaMask
-      const accounts = await window.ethereum.request({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const provider = window.ethereum as any;
+      
+      // Handle case where multiple wallets are installed
+      if (provider.providers && Array.isArray(provider.providers)) {
+        // Find MetaMask among multiple providers
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const metamaskProvider = provider.providers.find((p: any) => p.isMetaMask);
+        if (metamaskProvider) {
+          const accounts = await metamaskProvider.request({
+            method: 'eth_requestAccounts',
+          });
+          if (accounts && Array.isArray(accounts) && accounts.length > 0) {
+            const address = (accounts[0] as string).toLowerCase();
+            setRoleWallets(prev => ({
+              ...prev,
+              [role]: address,
+            }));
+            return;
+          }
+        }
+      }
+
+      // Standard single provider case
+      const accounts = await provider.request({
         method: 'eth_requestAccounts',
       });
 
-      if (accounts && accounts.length > 0) {
-        const address = accounts[0].toLowerCase();
+      if (accounts && Array.isArray(accounts) && accounts.length > 0) {
+        const address = (accounts[0] as string).toLowerCase();
         setRoleWallets(prev => ({
           ...prev,
           [role]: address,
         }));
+      } else {
+        throw new Error('No accounts returned from wallet');
       }
     } catch (err: unknown) {
+      console.error('Wallet connection error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to connect';
-      if (errorMessage.includes('rejected') || errorMessage.includes('denied')) {
-        setError('Connection rejected');
+      if (errorMessage.includes('rejected') || errorMessage.includes('denied') || errorMessage.includes('User rejected')) {
+        setError('Connection rejected by user');
+      } else if (errorMessage.includes('Unexpected error')) {
+        setError('Wallet extension error. Try refreshing the page or disabling other wallet extensions.');
       } else {
         setError(errorMessage);
       }
+      throw err; // Re-throw so the calling code can catch it
     } finally {
       setIsConnecting(false);
     }

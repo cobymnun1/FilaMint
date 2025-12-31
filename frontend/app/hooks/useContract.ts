@@ -138,14 +138,39 @@ export interface EscrowData {
 }
 
 /**
+ * Helper to get MetaMask provider specifically, avoiding other wallet extensions
+ */
+function getMetaMaskProvider() {
+  if (typeof window === 'undefined' || !window.ethereum) {
+    throw new Error('No wallet detected');
+  }
+  
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ethereum = window.ethereum as any;
+  
+  // If multiple providers, find MetaMask specifically
+  if (ethereum.providers && Array.isArray(ethereum.providers)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const metamask = ethereum.providers.find((p: any) => p.isMetaMask && !p.isBraveWallet);
+    if (metamask) return metamask;
+  }
+  
+  // Single provider - check if it's MetaMask
+  if (ethereum.isMetaMask) {
+    return ethereum;
+  }
+  
+  // Fallback to whatever is available
+  return ethereum;
+}
+
+/**
  * Hook to get an ethers provider (read-only blockchain access)
  */
 export function useProvider() {
   const getProvider = useCallback(() => {
-    if (typeof window === 'undefined' || !window.ethereum) {
-      throw new Error('MetaMask not installed');
-    }
-    return new ethers.BrowserProvider(window.ethereum);
+    const provider = getMetaMaskProvider();
+    return new ethers.BrowserProvider(provider);
   }, []);
 
   return { getProvider };
@@ -255,7 +280,13 @@ export function useCreateOrder() {
 
       return { orderId, escrowAddress, txHash: receipt.hash };
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      let errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      // Parse common errors for better UX
+      if (errorMessage.includes('insufficient funds') || errorMessage.includes('INSUFFICIENT_FUNDS')) {
+        errorMessage = 'Insufficient funds. Make sure your wallet has enough ETH and is connected to the correct network (Hardhat localhost:8545).';
+      } else if (errorMessage.includes('user rejected') || errorMessage.includes('User denied')) {
+        errorMessage = 'Transaction rejected by user.';
+      }
       setState({ data: null, error: errorMessage, isLoading: false });
       throw err;
     }

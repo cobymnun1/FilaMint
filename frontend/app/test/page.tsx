@@ -43,6 +43,8 @@ function EscrowTestContent() {
     connectWalletForRole,
     disconnectWalletForRole,
     setCurrentRole,
+    isConnecting,
+    error: walletError,
   } = useWalletContext();
 
   // Factory hooks
@@ -97,22 +99,47 @@ function EscrowTestContent() {
     }
   };
 
+  // Check for MetaMask
+  const checkMetaMask = () => {
+    if (typeof window === 'undefined') return false;
+    if (!window.ethereum) {
+      log('ERROR: MetaMask not detected. Please install MetaMask extension.');
+      return false;
+    }
+    return true;
+  };
+
   // Wallet actions
   const testConnectBuyer = async () => {
+    if (!checkMetaMask()) return;
     log('Connecting buyer wallet...');
     try {
       await connectWalletForRole('buyer');
-      log(`SUCCESS: Buyer wallet connected`);
+      // Check if it actually connected (context updates async)
+      setTimeout(() => {
+        if (roleWallets.buyer) {
+          log(`SUCCESS: Buyer wallet connected: ${roleWallets.buyer}`);
+        } else {
+          log('WARN: Connection may have been rejected or timed out');
+        }
+      }, 500);
     } catch (err) {
       log(`ERROR: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
   const testConnectSeller = async () => {
+    if (!checkMetaMask()) return;
     log('Connecting seller wallet...');
     try {
       await connectWalletForRole('seller');
-      log(`SUCCESS: Seller wallet connected`);
+      setTimeout(() => {
+        if (roleWallets.seller) {
+          log(`SUCCESS: Seller wallet connected: ${roleWallets.seller}`);
+        } else {
+          log('WARN: Connection may have been rejected or timed out');
+        }
+      }, 500);
     } catch (err) {
       log(`ERROR: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
@@ -347,6 +374,11 @@ function EscrowTestContent() {
         {/* Wallet Status */}
         <div className="mb-6 p-4 bg-gray-800 rounded-xl border border-gray-700">
           <h2 className="text-lg font-semibold mb-3 text-blue-400">Wallet Status</h2>
+          {walletError && (
+            <div className="mb-3 p-2 bg-red-900/30 border border-red-700 rounded-lg text-red-400 text-sm">
+              {walletError}
+            </div>
+          )}
           <div className="grid grid-cols-4 gap-4 text-sm mb-4">
             <div>
               <p className="text-gray-400">Current Role</p>
@@ -355,7 +387,7 @@ function EscrowTestContent() {
             <div>
               <p className="text-gray-400">Connected</p>
               <p className={`font-mono ${isConnectedForCurrentRole ? 'text-emerald-400' : 'text-red-400'}`}>
-                {isConnectedForCurrentRole ? 'Yes' : 'No'}
+                {isConnecting ? 'Connecting...' : isConnectedForCurrentRole ? 'Yes' : 'No'}
               </p>
             </div>
             <div>
@@ -371,7 +403,7 @@ function EscrowTestContent() {
               </p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button onClick={() => setCurrentRole('buyer')}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
                 currentRole === 'buyer' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -380,15 +412,27 @@ function EscrowTestContent() {
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
                 currentRole === 'seller' ? 'bg-emerald-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}>Seller Mode</button>
-            <button onClick={testConnectBuyer}
-              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition">
-              Connect Buyer
+            <button onClick={testConnectBuyer} disabled={isConnecting}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
+              {isConnecting ? 'Connecting...' : 'Connect Buyer'}
             </button>
-            <button onClick={testConnectSeller}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition">
-              Connect Seller
+            <button onClick={testConnectSeller} disabled={isConnecting}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
+              {isConnecting ? 'Connecting...' : 'Connect Seller'}
+            </button>
+            <button onClick={() => { disconnectWalletForRole('buyer'); log('Buyer disconnected'); }}
+              className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-sm font-medium transition">
+              Disconnect Buyer
+            </button>
+            <button onClick={() => { disconnectWalletForRole('seller'); log('Seller disconnected'); }}
+              className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-sm font-medium transition">
+              Disconnect Seller
             </button>
           </div>
+          <p className="mt-3 text-xs text-gray-500">
+            Tip: If you have multiple wallet extensions, try disabling all except MetaMask. 
+            Make sure MetaMask is unlocked and connected to localhost:8545 for Hardhat testing.
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-6">
