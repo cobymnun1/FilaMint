@@ -1,5 +1,14 @@
 const hre = require("hardhat");
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CONFIGURATION - Update these for production deployment
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Arbiter address - this is a fixed trusted address that resolves disputes
+// For testing: Hardhat Account #2
+// For production: Replace with your cold wallet address
+const ARBITER_ADDRESS = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
+
 async function main() {
   const [deployer] = await hre.ethers.getSigners();
 
@@ -9,12 +18,12 @@ async function main() {
   // Deploy PrintEscrowFactory
   // Parameters:
   // - platform: Address to receive platform fees (using deployer for testing)
-  // - arbiter: Address that can resolve disputes (using deployer for testing)
+  // - arbiter: Fixed trusted address that can resolve disputes
   // - minOrderAmount: Minimum order in wei (0.001 ETH = 1e15 wei)
   const PrintEscrowFactory = await hre.ethers.getContractFactory("PrintEscrowFactory");
   const factory = await PrintEscrowFactory.deploy(
     deployer.address, // platform - change in production
-    deployer.address, // arbiter - change in production
+    ARBITER_ADDRESS,  // arbiter - fixed trusted address (your cold wallet)
     hre.ethers.parseEther("0.001") // minOrderAmount: 0.001 ETH
   );
 
