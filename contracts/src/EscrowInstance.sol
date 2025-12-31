@@ -26,8 +26,7 @@ contract EscrowInstance is IEscrowInstance, ReentrancyGuard {
 
     // Set once by factory
     address public factory;
-    address public arbiter;
-    address public platform;
+    address public arbiter;  // Also receives all platform fees
     address public shippingOracle;
 
     // Order state
@@ -61,17 +60,16 @@ contract EscrowInstance is IEscrowInstance, ReentrancyGuard {
 
     /// @notice Initialize escrow (called once by factory)
     function initialize(
-        address _buyer, bytes32 _orderId, address _arbiter, address _platform, address _oracle
+        address _buyer, bytes32 _orderId, address _arbiter, address _oracle
     ) external payable {
         require(factory == address(0), "init");
-        require(_buyer != address(0) && _arbiter != address(0) && _platform != address(0), "addr");
+        require(_buyer != address(0) && _arbiter != address(0), "addr");
         require(msg.value > 0, "eth");
 
         factory = msg.sender;
         buyer = _buyer;
         orderId = _orderId;
         arbiter = _arbiter;
-        platform = _platform;
         shippingOracle = _oracle;
 
         // Split deposit: total = orderAmount * 1.025 (order + 2% gas + 0.5% fee)
@@ -92,7 +90,7 @@ contract EscrowInstance is IEscrowInstance, ReentrancyGuard {
         status = Status.Cancelled;
         uint256 cancelFee = (orderAmount * CANCEL_FEE_BPS) / BPS;
         uint256 fees = cancelFee + platformFee;
-        _send(platform, fees);
+        _send(arbiter, fees);
         _send(buyer, orderAmount + gasCushion - cancelFee);
         emit OrderCancelled(orderAmount + gasCushion - cancelFee, fees);
     }
@@ -192,7 +190,7 @@ contract EscrowInstance is IEscrowInstance, ReentrancyGuard {
         require(block.timestamp > arrivedAt + DISPUTE_WINDOW, "window");
         status = Status.Completed;
         uint256 buyerRefund = gasCushion > gasUsed ? gasCushion - gasUsed : 0;
-        _send(platform, platformFee);
+        _send(arbiter, platformFee);
         _send(seller, orderAmount);  // Seller gets full orderAmount (gas came from cushion)
         if (buyerRefund > 0) _send(buyer, buyerRefund);
         emit OrderCompleted(orderAmount, buyerRefund);
@@ -269,7 +267,7 @@ contract EscrowInstance is IEscrowInstance, ReentrancyGuard {
         uint256 sellerShare = pool - buyerShare;
         uint256 cushionLeft = gasCushion > gasUsed ? gasCushion - gasUsed : 0;
 
-        _send(platform, platformFee + tax);
+        _send(arbiter, platformFee + tax);
         if (buyerShare + cushionLeft > 0) _send(buyer, buyerShare + cushionLeft);
         if (sellerShare > 0) _send(seller, sellerShare);
 

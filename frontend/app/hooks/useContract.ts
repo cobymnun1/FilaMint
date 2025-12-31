@@ -18,7 +18,6 @@ export const FACTORY_ABI = [
   'function escrows(bytes32 orderId) view returns (address)',
   'function totalOrders() view returns (uint256)',
   'function getEscrows(uint256 offset, uint256 limit) view returns (address[])',
-  'function platform() view returns (address)',
   'function arbiter() view returns (address)',
   'function minOrderAmount() view returns (uint256)',
   'event OrderCreated(bytes32 indexed orderId, address indexed escrow, address indexed buyer, uint256 amount, bytes32 fileHash)',
@@ -302,7 +301,6 @@ export function useFactoryInfo() {
   const { getReadOnlyContract } = useContractInstance();
   const [state, setState] = useState<ContractCallResult<{
     totalOrders: number;
-    platform: string;
     arbiter: string;
     minOrderAmount: string;
   }>>({
@@ -317,16 +315,14 @@ export function useFactoryInfo() {
     try {
       const contract = getReadOnlyContract(CONTRACT_ADDRESSES.factory, FACTORY_ABI);
 
-      const [totalOrders, platform, arbiter, minOrderAmount] = await Promise.all([
+      const [totalOrders, arbiter, minOrderAmount] = await Promise.all([
         contract.totalOrders(),
-        contract.platform(),
         contract.arbiter(),
         contract.minOrderAmount(),
       ]);
 
       const data = {
         totalOrders: Number(totalOrders),
-        platform,
         arbiter,
         minOrderAmount: ethers.formatEther(minOrderAmount),
       };

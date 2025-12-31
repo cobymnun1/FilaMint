@@ -9,8 +9,7 @@ import "./EscrowInstance.sol";
 /// @notice Each order gets its own contract address (~45 bytes deployment cost)
 contract PrintEscrowFactory is Ownable {
     address public immutable implementation;
-    address public platform;
-    address public arbiter;
+    address public arbiter;  // Receives all fees + resolves disputes
     address public shippingOracle;
     uint256 public minOrderAmount;
     uint256 public orderCount;
@@ -20,15 +19,13 @@ contract PrintEscrowFactory is Ownable {
     address[] public allEscrows;
 
     event OrderCreated(bytes32 indexed orderId, address indexed escrow, address indexed buyer, uint256 amount, bytes32 fileHash);
-    event PlatformUpdated(address indexed oldPlatform, address indexed newPlatform);
     event ArbiterUpdated(address indexed oldArbiter, address indexed newArbiter);
     event OracleUpdated(address indexed oldOracle, address indexed newOracle);
     event MinOrderAmountUpdated(uint256 oldAmount, uint256 newAmount);
 
-    constructor(address _platform, address _arbiter, uint256 _minOrderAmount) Ownable(msg.sender) {
-        require(_platform != address(0) && _arbiter != address(0), "addr");
+    constructor(address _arbiter, uint256 _minOrderAmount) Ownable(msg.sender) {
+        require(_arbiter != address(0), "addr");
         implementation = address(new EscrowInstance());
-        platform = _platform;
         arbiter = _arbiter;
         minOrderAmount = _minOrderAmount;
     }
@@ -40,7 +37,7 @@ contract PrintEscrowFactory is Ownable {
         orderId = keccak256(abi.encodePacked(block.chainid, address(this), msg.sender, orderCount++, block.timestamp));
         escrow = Clones.clone(implementation);
 
-        EscrowInstance(payable(escrow)).initialize{value: msg.value}(msg.sender, orderId, arbiter, platform, shippingOracle);
+        EscrowInstance(payable(escrow)).initialize{value: msg.value}(msg.sender, orderId, arbiter, shippingOracle);
 
         escrows[orderId] = escrow;
         escrowToOrderId[escrow] = orderId;
@@ -56,7 +53,7 @@ contract PrintEscrowFactory is Ownable {
         orderId = keccak256(abi.encodePacked(block.chainid, address(this), msg.sender, salt, block.timestamp));
         escrow = Clones.cloneDeterministic(implementation, salt);
 
-        EscrowInstance(payable(escrow)).initialize{value: msg.value}(msg.sender, orderId, arbiter, platform, shippingOracle);
+        EscrowInstance(payable(escrow)).initialize{value: msg.value}(msg.sender, orderId, arbiter, shippingOracle);
 
         escrows[orderId] = escrow;
         escrowToOrderId[escrow] = orderId;
@@ -79,12 +76,6 @@ contract PrintEscrowFactory is Ownable {
         address[] memory result = new address[](end - offset);
         for (uint256 i = offset; i < end; i++) result[i - offset] = allEscrows[i];
         return result;
-    }
-
-    function setPlatform(address _platform) external onlyOwner {
-        require(_platform != address(0), "addr");
-        emit PlatformUpdated(platform, _platform);
-        platform = _platform;
     }
 
     function setArbiter(address _arbiter) external onlyOwner {
