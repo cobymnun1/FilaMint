@@ -104,8 +104,10 @@ export const STATUS_LABELS: Record<EscrowStatus, string> = {
   [EscrowStatus.Settled]: 'Settled',
 };
 
+// Options interface kept for API compatibility but role verification removed
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 interface UseContractOptions {
-  requiredRole?: 'buyer' | 'seller' | 'arbiter';
+  // Role verification removed - single wallet can act as any role
 }
 
 interface ContractCallResult<T> {
@@ -176,30 +178,22 @@ export function useProvider() {
 }
 
 /**
- * Hook to get a signer with role verification
+ * Hook to get a signer (uses currently connected wallet)
+ * In single-wallet mode, the same wallet can act as buyer or seller in different transactions
  */
 export function useSigner() {
-  const { roleWallets, currentRole } = useWalletContext();
+  const { walletAddress, isConnected } = useWalletContext();
   const { getProvider } = useProvider();
 
-  const getSigner = useCallback(async (requiredRole?: 'buyer' | 'seller' | 'arbiter') => {
+  const getSigner = useCallback(async () => {
+    if (!isConnected || !walletAddress) {
+      throw new Error('Please connect your wallet first');
+    }
+    
     const provider = getProvider();
     const signer = await provider.getSigner();
-    const signerAddress = (await signer.getAddress()).toLowerCase();
-
-    const roleToCheck = requiredRole || currentRole;
-    const expectedAddress = roleWallets[roleToCheck as keyof typeof roleWallets];
-
-    if (expectedAddress && signerAddress !== expectedAddress) {
-      throw new Error(
-        `Wrong wallet active. Please switch to your ${roleToCheck} wallet in MetaMask.\n` +
-        `Expected: ${expectedAddress.slice(0, 6)}...${expectedAddress.slice(-4)}\n` +
-        `Active: ${signerAddress.slice(0, 6)}...${signerAddress.slice(-4)}`
-      );
-    }
-
     return signer;
-  }, [getProvider, roleWallets, currentRole]);
+  }, [getProvider, walletAddress, isConnected]);
 
   return { getSigner };
 }
@@ -214,9 +208,9 @@ export function useContractInstance() {
   const getContract = useCallback(async (
     address: string,
     abi: readonly string[],
-    options?: UseContractOptions
+    _options?: UseContractOptions
   ) => {
-    const signer = await getSigner(options?.requiredRole);
+    const signer = await getSigner();
     return new ethers.Contract(address, abi, signer);
   }, [getSigner]);
 
@@ -249,8 +243,7 @@ export function useCreateOrder() {
     try {
       const contract = await getContract(
         CONTRACT_ADDRESSES.factory,
-        FACTORY_ABI,
-        { requiredRole: 'buyer' }
+        FACTORY_ABI
       );
 
       // Convert file hash to bytes32 if it's not already
@@ -436,7 +429,7 @@ export function useCancel() {
   const cancel = useCallback(async (escrowAddress: string) => {
     setState({ data: null, error: null, isLoading: true });
     try {
-      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'buyer' });
+      const contract = await getContract(escrowAddress, ESCROW_ABI);
       const tx = await contract.cancel();
       const receipt = await tx.wait();
       setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
@@ -463,7 +456,7 @@ export function useOpenDispute() {
   const openDispute = useCallback(async (escrowAddress: string) => {
     setState({ data: null, error: null, isLoading: true });
     try {
-      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'buyer' });
+      const contract = await getContract(escrowAddress, ESCROW_ABI);
       const tx = await contract.openDispute();
       const receipt = await tx.wait();
       setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
@@ -490,7 +483,7 @@ export function useSubmitOffer() {
   const submitOffer = useCallback(async (escrowAddress: string, buyerPercent: number) => {
     setState({ data: null, error: null, isLoading: true });
     try {
-      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'buyer' });
+      const contract = await getContract(escrowAddress, ESCROW_ABI);
       const tx = await contract.submitOffer(buyerPercent);
       const receipt = await tx.wait();
       setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
@@ -517,7 +510,7 @@ export function useAcceptOffer() {
   const acceptOffer = useCallback(async (escrowAddress: string) => {
     setState({ data: null, error: null, isLoading: true });
     try {
-      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'buyer' });
+      const contract = await getContract(escrowAddress, ESCROW_ABI);
       const tx = await contract.acceptOffer();
       const receipt = await tx.wait();
       setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
@@ -544,7 +537,7 @@ export function useRejectFinalOffer() {
   const rejectFinalOffer = useCallback(async (escrowAddress: string) => {
     setState({ data: null, error: null, isLoading: true });
     try {
-      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'buyer' });
+      const contract = await getContract(escrowAddress, ESCROW_ABI);
       const tx = await contract.rejectFinalOffer();
       const receipt = await tx.wait();
       setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
@@ -575,7 +568,7 @@ export function useClaim() {
   const claim = useCallback(async (escrowAddress: string) => {
     setState({ data: null, error: null, isLoading: true });
     try {
-      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'seller' });
+      const contract = await getContract(escrowAddress, ESCROW_ABI);
       const tx = await contract.claim();
       const receipt = await tx.wait();
       setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
@@ -602,7 +595,7 @@ export function useMarkShipped() {
   const markShipped = useCallback(async (escrowAddress: string) => {
     setState({ data: null, error: null, isLoading: true });
     try {
-      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'seller' });
+      const contract = await getContract(escrowAddress, ESCROW_ABI);
       const tx = await contract.markShipped();
       const receipt = await tx.wait();
       setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
@@ -629,7 +622,7 @@ export function useClaimDelivery() {
   const claimDelivery = useCallback(async (escrowAddress: string) => {
     setState({ data: null, error: null, isLoading: true });
     try {
-      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'seller' });
+      const contract = await getContract(escrowAddress, ESCROW_ABI);
       const tx = await contract.claimDelivery();
       const receipt = await tx.wait();
       setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
@@ -656,7 +649,7 @@ export function useSubmitCounterOffer() {
   const submitCounterOffer = useCallback(async (escrowAddress: string, buyerPercent: number) => {
     setState({ data: null, error: null, isLoading: true });
     try {
-      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'seller' });
+      const contract = await getContract(escrowAddress, ESCROW_ABI);
       const tx = await contract.submitCounterOffer(buyerPercent);
       const receipt = await tx.wait();
       setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
@@ -683,7 +676,7 @@ export function useAcceptBuyerOffer() {
   const acceptBuyerOffer = useCallback(async (escrowAddress: string) => {
     setState({ data: null, error: null, isLoading: true });
     try {
-      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'seller' });
+      const contract = await getContract(escrowAddress, ESCROW_ABI);
       const tx = await contract.acceptBuyerOffer();
       const receipt = await tx.wait();
       setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
@@ -799,7 +792,7 @@ export function useArbiterDecide() {
   const arbiterDecide = useCallback(async (escrowAddress: string, buyerPercent: number) => {
     setState({ data: null, error: null, isLoading: true });
     try {
-      const contract = await getContract(escrowAddress, ESCROW_ABI, { requiredRole: 'arbiter' });
+      const contract = await getContract(escrowAddress, ESCROW_ABI);
       const tx = await contract.arbiterDecide(buyerPercent);
       const receipt = await tx.wait();
       setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
@@ -830,6 +823,52 @@ export function useLookupEscrow() {
   }, [getReadOnlyContract]);
 
   return { lookupEscrow };
+}
+
+/**
+ * Hook to fetch all escrow addresses from the factory
+ */
+export function useGetAllEscrows() {
+  const { getReadOnlyContract } = useContractInstance();
+  const [state, setState] = useState<ContractCallResult<string[]>>({
+    data: null,
+    error: null,
+    isLoading: false,
+  });
+
+  const getAllEscrows = useCallback(async () => {
+    setState({ data: null, error: null, isLoading: true });
+
+    try {
+      const contract = getReadOnlyContract(CONTRACT_ADDRESSES.factory, FACTORY_ABI);
+      const totalOrders = await contract.totalOrders();
+      const total = Number(totalOrders);
+      
+      if (total === 0) {
+        setState({ data: [], error: null, isLoading: false });
+        return [];
+      }
+
+      // Fetch all escrows in batches of 50
+      const batchSize = 50;
+      const allEscrows: string[] = [];
+      
+      for (let offset = 0; offset < total; offset += batchSize) {
+        const limit = Math.min(batchSize, total - offset);
+        const escrows = await contract.getEscrows(offset, limit);
+        allEscrows.push(...escrows);
+      }
+
+      setState({ data: allEscrows, error: null, isLoading: false });
+      return allEscrows;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch escrows';
+      setState({ data: null, error: errorMessage, isLoading: false });
+      throw err;
+    }
+  }, [getReadOnlyContract]);
+
+  return { getAllEscrows, ...state };
 }
 
 /**

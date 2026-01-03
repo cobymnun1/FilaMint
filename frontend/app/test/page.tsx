@@ -36,12 +36,11 @@ function EscrowTestContent() {
   const [logs, setLogs] = useState<string[]>([]);
   
   const { 
-    roleWallets, 
-    currentRole, 
-    currentRoleAddress,
-    isConnectedForCurrentRole,
-    connectWalletForRole,
-    disconnectWalletForRole,
+    walletAddress,
+    isConnected,
+    connectWallet,
+    disconnectWallet,
+    currentRole,
     setCurrentRole,
     isConnecting,
     error: walletError,
@@ -110,49 +109,14 @@ function EscrowTestContent() {
   };
 
   // Wallet actions
-  const testConnectBuyer = async () => {
+  const testConnect = async () => {
     if (!checkMetaMask()) return;
-    log('Connecting buyer wallet...');
+    log('Connecting wallet...');
     try {
-      await connectWalletForRole('buyer');
-      // Check if it actually connected (context updates async)
+      await connectWallet();
       setTimeout(() => {
-        if (roleWallets.buyer) {
-          log(`SUCCESS: Buyer wallet connected: ${roleWallets.buyer}`);
-        } else {
-          log('WARN: Connection may have been rejected or timed out');
-        }
-      }, 500);
-    } catch (err) {
-      log(`ERROR: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
-  };
-
-  const testConnectSeller = async () => {
-    if (!checkMetaMask()) return;
-    log('Connecting seller wallet...');
-    try {
-      await connectWalletForRole('seller');
-      setTimeout(() => {
-        if (roleWallets.seller) {
-          log(`SUCCESS: Seller wallet connected: ${roleWallets.seller}`);
-        } else {
-          log('WARN: Connection may have been rejected or timed out');
-        }
-      }, 500);
-    } catch (err) {
-      log(`ERROR: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
-  };
-
-  const testConnectArbiter = async () => {
-    if (!checkMetaMask()) return;
-    log('Connecting arbiter wallet...');
-    try {
-      await connectWalletForRole('arbiter');
-      setTimeout(() => {
-        if (roleWallets.arbiter) {
-          log(`SUCCESS: Arbiter wallet connected: ${roleWallets.arbiter}`);
+        if (walletAddress) {
+          log(`SUCCESS: Wallet connected: ${walletAddress}`);
         } else {
           log('WARN: Connection may have been rejected or timed out');
         }
@@ -363,7 +327,7 @@ function EscrowTestContent() {
     <div className="min-h-screen bg-gray-900 text-white p-8">
       <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold mb-2">Escrow Contract Test Panel</h1>
-        <p className="text-gray-400 mb-8">Test the PrintMod escrow system</p>
+        <p className="text-gray-400 mb-8">Test the FilaMint escrow system (Single Wallet Mode)</p>
         
         {/* Factory Info */}
         <div className="mb-6 p-4 bg-gray-800 rounded-xl border border-gray-700">
@@ -396,34 +360,26 @@ function EscrowTestContent() {
               {walletError}
             </div>
           )}
-          <div className="grid grid-cols-5 gap-4 text-sm mb-4">
+          <div className="grid grid-cols-4 gap-4 text-sm mb-4">
             <div>
               <p className="text-gray-400">Current Role</p>
               <p className="font-mono text-lg">{currentRole}</p>
             </div>
             <div>
               <p className="text-gray-400">Connected</p>
-              <p className={`font-mono ${isConnectedForCurrentRole ? 'text-emerald-400' : 'text-red-400'}`}>
-                {isConnecting ? 'Connecting...' : isConnectedForCurrentRole ? 'Yes' : 'No'}
+              <p className={`font-mono ${isConnected ? 'text-emerald-400' : 'text-red-400'}`}>
+                {isConnecting ? 'Connecting...' : isConnected ? 'Yes' : 'No'}
               </p>
             </div>
             <div>
-              <p className="text-gray-400">Buyer</p>
-              <p className={`font-mono text-xs ${roleWallets.buyer ? 'text-blue-400' : 'text-gray-500'}`}>
-                {truncate(roleWallets.buyer)}
+              <p className="text-gray-400">Wallet Address</p>
+              <p className={`font-mono text-xs ${walletAddress ? 'text-blue-400' : 'text-gray-500'}`}>
+                {truncate(walletAddress)}
               </p>
             </div>
             <div>
-              <p className="text-gray-400">Seller</p>
-              <p className={`font-mono text-xs ${roleWallets.seller ? 'text-emerald-400' : 'text-gray-500'}`}>
-                {truncate(roleWallets.seller)}
-              </p>
-            </div>
-            <div>
-              <p className="text-gray-400">Arbiter</p>
-              <p className={`font-mono text-xs ${roleWallets.arbiter ? 'text-red-400' : 'text-gray-500'}`}>
-                {truncate(roleWallets.arbiter)}
-              </p>
+              <p className="text-gray-400">Mode</p>
+              <p className="font-mono text-xs text-violet-400">Single Wallet</p>
             </div>
           </div>
           <div className="flex gap-2 flex-wrap">
@@ -435,40 +391,19 @@ function EscrowTestContent() {
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
                 currentRole === 'seller' ? 'bg-emerald-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}>Seller Mode</button>
-            <button onClick={() => setCurrentRole('arbiter')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                currentRole === 'arbiter' ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}>Arbiter Mode</button>
           </div>
           <div className="flex gap-2 flex-wrap mt-2">
-            <button onClick={testConnectBuyer} disabled={isConnecting}
+            <button onClick={testConnect} disabled={isConnecting}
               className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
-              {isConnecting ? '...' : 'Connect Buyer'}
+              {isConnecting ? '...' : 'Connect Wallet'}
             </button>
-            <button onClick={testConnectSeller} disabled={isConnecting}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
-              {isConnecting ? '...' : 'Connect Seller'}
-            </button>
-            <button onClick={testConnectArbiter} disabled={isConnecting}
-              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
-              {isConnecting ? '...' : 'Connect Arbiter'}
-            </button>
-            <button onClick={() => { disconnectWalletForRole('buyer'); log('Buyer disconnected'); }}
+            <button onClick={() => { disconnectWallet(); log('Wallet disconnected'); }}
               className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-sm font-medium transition">
-              Disc. Buyer
-            </button>
-            <button onClick={() => { disconnectWalletForRole('seller'); log('Seller disconnected'); }}
-              className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-sm font-medium transition">
-              Disc. Seller
-            </button>
-            <button onClick={() => { disconnectWalletForRole('arbiter'); log('Arbiter disconnected'); }}
-              className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-sm font-medium transition">
-              Disc. Arbiter
+              Disconnect
             </button>
           </div>
           <p className="mt-3 text-xs text-gray-500">
-            Tip: Use different Hardhat accounts for each role. Account #0 = Buyer, #1 = Seller, #2 = Arbiter.
-            Switch accounts in MetaMask before connecting each role.
+            Tip: Use different Hardhat accounts for buyer/seller testing. Switch accounts in MetaMask before each action.
           </p>
         </div>
 
@@ -490,7 +425,7 @@ function EscrowTestContent() {
                     className="w-full bg-gray-700 border border-gray-600 px-3 py-2 rounded-lg text-sm" />
                   <p className="text-gray-500 text-xs mt-1">Total: {(parseFloat(orderAmount || '0') * 1.025).toFixed(6)} ETH (incl. fees)</p>
                 </div>
-                <button onClick={testCreateOrder} disabled={createLoading}
+                <button onClick={testCreateOrder} disabled={createLoading || !isConnected}
                   className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg font-medium transition">
                   {createLoading ? 'Creating...' : 'Create Order'}
                 </button>
@@ -515,23 +450,23 @@ function EscrowTestContent() {
             <div className="p-4 bg-gray-800 rounded-xl border border-blue-700/50">
               <h2 className="text-lg font-semibold mb-3 text-blue-400">Buyer Actions</h2>
               <div className="grid grid-cols-2 gap-2">
-                <button onClick={testCancel} disabled={cancelLoading || !escrowAddress}
+                <button onClick={testCancel} disabled={cancelLoading || !escrowAddress || !isConnected}
                   className="px-3 py-2 bg-gray-600 hover:bg-gray-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
                   {cancelLoading ? '...' : 'Cancel Order'}
                 </button>
-                <button onClick={testOpenDispute} disabled={disputeLoading || !escrowAddress}
+                <button onClick={testOpenDispute} disabled={disputeLoading || !escrowAddress || !isConnected}
                   className="px-3 py-2 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
                   {disputeLoading ? '...' : 'Open Dispute'}
                 </button>
-                <button onClick={testSubmitOffer} disabled={offerLoading || !escrowAddress}
+                <button onClick={testSubmitOffer} disabled={offerLoading || !escrowAddress || !isConnected}
                   className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
                   {offerLoading ? '...' : 'Submit Offer'}
                 </button>
-                <button onClick={testAcceptOffer} disabled={acceptLoading || !escrowAddress}
+                <button onClick={testAcceptOffer} disabled={acceptLoading || !escrowAddress || !isConnected}
                   className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
                   {acceptLoading ? '...' : 'Accept Seller Offer'}
                 </button>
-                <button onClick={testRejectFinal} disabled={rejectLoading || !escrowAddress}
+                <button onClick={testRejectFinal} disabled={rejectLoading || !escrowAddress || !isConnected}
                   className="col-span-2 px-3 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
                   {rejectLoading ? '...' : 'Reject Final → Arbiter'}
                 </button>
@@ -542,23 +477,23 @@ function EscrowTestContent() {
             <div className="p-4 bg-gray-800 rounded-xl border border-emerald-700/50">
               <h2 className="text-lg font-semibold mb-3 text-emerald-400">Seller Actions</h2>
               <div className="grid grid-cols-2 gap-2">
-                <button onClick={testClaim} disabled={claimLoading || !escrowAddress}
+                <button onClick={testClaim} disabled={claimLoading || !escrowAddress || !isConnected}
                   className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
                   {claimLoading ? '...' : 'Claim Order'}
                 </button>
-                <button onClick={testMarkShipped} disabled={shipLoading || !escrowAddress}
+                <button onClick={testMarkShipped} disabled={shipLoading || !escrowAddress || !isConnected}
                   className="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
                   {shipLoading ? '...' : 'Mark Shipped'}
                 </button>
-                <button onClick={testClaimDelivery} disabled={deliveryLoading || !escrowAddress}
+                <button onClick={testClaimDelivery} disabled={deliveryLoading || !escrowAddress || !isConnected}
                   className="px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
                   {deliveryLoading ? '...' : 'Claim Delivery'}
                 </button>
-                <button onClick={testSubmitCounter} disabled={counterLoading || !escrowAddress}
+                <button onClick={testSubmitCounter} disabled={counterLoading || !escrowAddress || !isConnected}
                   className="px-3 py-2 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
                   {counterLoading ? '...' : 'Counter-Offer'}
                 </button>
-                <button onClick={testAcceptBuyer} disabled={acceptBuyerLoading || !escrowAddress}
+                <button onClick={testAcceptBuyer} disabled={acceptBuyerLoading || !escrowAddress || !isConnected}
                   className="col-span-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
                   {acceptBuyerLoading ? '...' : 'Accept Buyer Offer'}
                 </button>
@@ -569,19 +504,19 @@ function EscrowTestContent() {
             <div className="p-4 bg-gray-800 rounded-xl border border-gray-700">
               <h2 className="text-lg font-semibold mb-3 text-gray-400">Public / Arbiter Actions</h2>
               <div className="grid grid-cols-2 gap-2">
-                <button onClick={testFinalizeOrder} disabled={finalizeOrderLoading || !escrowAddress}
+                <button onClick={testFinalizeOrder} disabled={finalizeOrderLoading || !escrowAddress || !isConnected}
                   className="px-3 py-2 bg-gray-600 hover:bg-gray-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
                   {finalizeOrderLoading ? '...' : 'Finalize Order'}
                 </button>
-                <button onClick={testFinalizeOffer} disabled={finalizeOfferLoading || !escrowAddress}
+                <button onClick={testFinalizeOffer} disabled={finalizeOfferLoading || !escrowAddress || !isConnected}
                   className="px-3 py-2 bg-gray-600 hover:bg-gray-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
                   {finalizeOfferLoading ? '...' : 'Finalize Offer'}
                 </button>
-                <button onClick={testFinalizeArbiter} disabled={finalizeArbiterLoading || !escrowAddress}
+                <button onClick={testFinalizeArbiter} disabled={finalizeArbiterLoading || !escrowAddress || !isConnected}
                   className="px-3 py-2 bg-gray-600 hover:bg-gray-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
                   {finalizeArbiterLoading ? '...' : 'Finalize Arbiter'}
                 </button>
-                <button onClick={testArbiterDecide} disabled={arbiterLoading || !escrowAddress}
+                <button onClick={testArbiterDecide} disabled={arbiterLoading || !escrowAddress || !isConnected}
                   className="px-3 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
                   {arbiterLoading ? '...' : 'Arbiter Decide'}
                 </button>
@@ -730,14 +665,14 @@ function EscrowTestContent() {
                 <li>Deploy contracts: <code className="text-violet-400">npx hardhat run scripts/deploy.js --network localhost</code></li>
                 <li>Set <code className="text-violet-400">NEXT_PUBLIC_ESCROW_FACTORY_ADDRESS</code> in .env.local</li>
                 <li>Import Hardhat accounts into MetaMask (localhost:8545)</li>
-                <li>Connect <span className="text-blue-400">Buyer</span> and <span className="text-emerald-400">Seller</span> wallets</li>
-                <li>Create order as buyer, then claim as seller</li>
+                <li>Connect wallet and create an order as buyer</li>
+                <li>Switch MetaMask to different account and claim as seller</li>
                 <li>Use Hardhat console to advance time for testing timeouts</li>
               </ol>
               <div className="mt-3 p-2 bg-gray-900 rounded text-xs font-mono text-gray-400">
                 // Advance time in Hardhat console:<br/>
-                await ethers.provider.send("evm_increaseTime", [604800]); // 7 days<br/>
-                await ethers.provider.send("evm_mine");
+                await ethers.provider.send(&quot;evm_increaseTime&quot;, [604800]); // 7 days<br/>
+                await ethers.provider.send(&quot;evm_mine&quot;);
               </div>
             </div>
           </div>

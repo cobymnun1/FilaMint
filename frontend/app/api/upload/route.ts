@@ -82,7 +82,7 @@ async function getEstimateFromBuffer(
     dimensions: { x: round(x), y: round(y), z: round(z) },
     volumeCm3: round(volumeCm3),
     weightGrams: round(weightGrams),
-    isWatertight: stl.isWatertight,
+    isWatertight: (stl as { isWatertight?: boolean }).isWatertight ?? true, // Assume watertight if property not available
     material: mat.name,
     color,
     infillPercent,
