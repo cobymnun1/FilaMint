@@ -13,7 +13,9 @@ mod/
 │   │   └── api/           # API routes (file upload)
 │   └── public/            # Static assets & mock data
 ├── backend/           # Backend services (planned)
-├── contracts/         # Solidity smart contracts (planned)
+├── contracts/         # Solidity smart contracts (Hardhat)
+│   ├── src/               # Contract source files
+│   └── scripts/           # Deployment scripts
 └── uploads/           # Uploaded STL files storage
 ```
 
@@ -64,7 +66,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 |-------|------------|
 | Frontend | Next.js 16, React 19, TypeScript |
 | Styling | Tailwind CSS 4 |
-| Smart Contracts | Solidity (planned) |
+| Smart Contracts | Solidity 0.8.24, Hardhat, EIP-1167 Clones |
 | Blockchain | Ethereum / EVM-compatible |
 
 ## Order Lifecycle
@@ -87,14 +89,36 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 - `delivered` - Buyer confirmed receipt, escrow released
 - `disputed` - Issue raised, requires resolution
 
+## Smart Contracts
+
+### Fee Structure
+
+All fees go to the **arbiter address** (platform owner's cold wallet):
+
+| Fee | Amount | When |
+|-----|--------|------|
+| Platform fee | 0.5% | Every completed order |
+| Cancel fee | 5% | Buyer cancels before claim |
+| Arbiter tax | 10% | Dispute resolved by arbiter |
+| Gas cushion | 2% | Refundable to buyer |
+
+### Deployment
+
+```bash
+cd contracts
+npx hardhat node                                      # Terminal 1
+npx hardhat run scripts/deploy.js --network localhost # Terminal 2
+```
+
+Update `ARBITER_ADDRESS` in `scripts/deploy.js` with your cold wallet address before production deployment.
+
 ## Environment Variables
 
 Create `.env.local` in the frontend directory:
 
 ```env
-# Future: Add contract addresses, RPC URLs
-NEXT_PUBLIC_CHAIN_ID=1
-NEXT_PUBLIC_CONTRACT_ADDRESS=0x...
+NEXT_PUBLIC_ESCROW_FACTORY_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
+NEXT_PUBLIC_CHAIN_ID=31337
 ```
 
 ## Development
@@ -141,13 +165,14 @@ Upload a 3D model file.
 
 ## Roadmap
 
-- [ ] Smart contract development (escrow, dispute resolution)
-- [ ] Wallet integration (MetaMask, WalletConnect)
+- [x] Smart contract development (escrow, dispute resolution)
+- [x] Wallet integration (MetaMask)
 - [ ] STL file preview/viewer
 - [ ] Print cost estimation algorithm
 - [ ] Reputation system for printers
-- [ ] Shipping integration
+- [ ] Shipping oracle integration
 - [ ] Multi-chain support
+- [ ] WalletConnect support
 
 ## License
 

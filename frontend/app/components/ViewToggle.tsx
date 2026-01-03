@@ -1,6 +1,6 @@
 'use client';
 
-export type ViewMode = 'buyer' | 'seller';
+export type ViewMode = 'buyer' | 'seller' | 'arbiter';
 
 interface ViewToggleProps {
   currentView: ViewMode;

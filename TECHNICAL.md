@@ -117,18 +117,22 @@ Cancelled                   InDispute → Settled (negotiation)
 
 ### Fee Structure
 
-| Fee | Amount | When Applied |
-|-----|--------|--------------|
-| Platform fee | 0.5% | All transactions |
-| Cancellation fee | 5% | Buyer cancels (even before claim) |
-| Arbitration tax | 10% (5% each) | Only if arbiter decides |
-| Gas cushion | 2% | Refundable remainder to buyer |
+All fees go to the **arbiter address** (your cold wallet), which also resolves disputes.
+
+| Fee | Amount | When Applied | Recipient |
+|-----|--------|--------------|-----------|
+| Platform fee | 0.5% | All transactions | Arbiter |
+| Cancellation fee | 5% | Buyer cancels (before claim) | Arbiter |
+| Arbitration tax | 10% (5% each) | Only if arbiter decides | Arbiter |
+| Gas cushion | 2% | Refundable remainder to buyer | Buyer |
 
 **Deposit Calculation:**
 ```
 Total Deposit = orderAmount × 1.025
               = orderAmount + (2% gas cushion) + (0.5% platform fee)
 ```
+
+**Changing the fee recipient:** Call `factory.setArbiter(newAddress)` (only factory owner can call). This updates the arbiter for all **new** escrows; existing escrows keep their original arbiter.
 
 ### Dispute Negotiation Flow
 
@@ -151,7 +155,7 @@ Total Deposit = orderAmount × 1.025
 createOrder(bytes32 fileHash) → (bytes32 orderId, address escrow)
 getEscrow(bytes32 orderId) → address
 totalOrders() → uint256
-setPlatform(address) / setArbiter(address) / setShippingOracle(address)
+setArbiter(address) / setShippingOracle(address)  // arbiter receives all fees + resolves disputes
 ```
 
 **Escrow (EscrowInstance.sol):**
