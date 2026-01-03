@@ -1,66 +1,13 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import OrderCard from './OrderCard';
-import { Order, PrintMaterial } from '../types/order';
-
-interface SellerViewProps {
-  orders: Order[];
-}
+import { useState } from 'react';
 
 type SortOption = 'escrow-high' | 'escrow-low' | 'time-short' | 'time-long' | 'newest';
-type FilterMaterial = PrintMaterial | 'all';
+type FilterMaterial = 'all' | 'PLA' | 'ABS' | 'PETG' | 'TPU' | 'Resin';
 
-export default function SellerView({ orders }: SellerViewProps) {
+export default function SellerView() {
   const [sortBy, setSortBy] = useState<SortOption>('escrow-high');
   const [filterMaterial, setFilterMaterial] = useState<FilterMaterial>('all');
-  const [claimedOrders, setClaimedOrders] = useState<Set<string>>(new Set());
-
-  // Get pending orders available for claiming
-  const pendingOrders = useMemo(() => {
-    let filtered = orders.filter(order => order.status === 'pending');
-    
-    // Apply material filter
-    if (filterMaterial !== 'all') {
-      filtered = filtered.filter(order => order.material === filterMaterial);
-    }
-    
-    // Apply sorting
-    switch (sortBy) {
-      case 'escrow-high':
-        filtered.sort((a, b) => b.escrowAmountEth - a.escrowAmountEth);
-        break;
-      case 'escrow-low':
-        filtered.sort((a, b) => a.escrowAmountEth - b.escrowAmountEth);
-        break;
-      case 'time-short':
-        filtered.sort((a, b) => a.printTimeHours - b.printTimeHours);
-        break;
-      case 'time-long':
-        filtered.sort((a, b) => b.printTimeHours - a.printTimeHours);
-        break;
-      case 'newest':
-        filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        break;
-    }
-    
-    return filtered;
-  }, [orders, sortBy, filterMaterial]);
-
-  // Get orders this seller has claimed (mock - in real app would filter by connected wallet)
-  const myClaimedOrders = orders.filter(order => 
-    ['claimed', 'printing', 'shipped'].includes(order.status)
-  );
-
-  // Stats
-  const totalPendingValue = pendingOrders.reduce((sum, o) => sum + o.escrowAmountEth, 0);
-  const myActiveOrders = myClaimedOrders.length;
-
-  const handleClaim = (orderId: string) => {
-    // Mock claim - in real app would call smart contract
-    setClaimedOrders(prev => new Set(prev).add(orderId));
-    alert(`Claimed order ${orderId}! (Mock - contract integration pending)`);
-  };
 
   return (
     <div className="space-y-8">
@@ -68,15 +15,15 @@ export default function SellerView({ orders }: SellerViewProps) {
       <section className="grid grid-cols-3 gap-4">
         <div className="p-4 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border border-amber-200 dark:border-amber-800/50">
           <p className="text-sm text-amber-700 dark:text-amber-300 font-medium">Available Requests</p>
-          <p className="text-2xl font-bold text-amber-900 dark:text-amber-100">{pendingOrders.length}</p>
+          <p className="text-2xl font-bold text-amber-900 dark:text-amber-100">0</p>
         </div>
         <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-800/50">
           <p className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">Total Escrow Value</p>
-          <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">{totalPendingValue.toFixed(3)} ETH</p>
+          <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">0.000 ETH</p>
         </div>
         <div className="p-4 rounded-xl bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-900/20 dark:to-purple-900/20 border border-violet-200 dark:border-violet-800/50">
           <p className="text-sm text-violet-700 dark:text-violet-300 font-medium">My Active Jobs</p>
-          <p className="text-2xl font-bold text-violet-900 dark:text-violet-100">{myActiveOrders}</p>
+          <p className="text-2xl font-bold text-violet-900 dark:text-violet-100">0</p>
         </div>
       </section>
 
@@ -116,48 +63,19 @@ export default function SellerView({ orders }: SellerViewProps) {
           </div>
         </div>
 
-        {pendingOrders.length > 0 ? (
-          <div className="grid gap-4">
-            {pendingOrders.map(order => (
-              <OrderCard 
-                key={order.id} 
-                order={order} 
-                viewMode="seller"
-                onClaim={claimedOrders.has(order.id) ? undefined : handleClaim}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-12 rounded-xl border border-dashed border-gray-300 dark:border-gray-700">
-            <svg className="w-12 h-12 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-            <p className="text-gray-500 dark:text-gray-400">
-              {filterMaterial !== 'all' 
-                ? `No pending ${filterMaterial} requests available.`
-                : 'No pending print requests available.'}
-            </p>
-          </div>
-        )}
+        {/* Empty State */}
+        <div className="text-center py-12 rounded-xl border border-dashed border-gray-300 dark:border-gray-700">
+          <svg className="w-12 h-12 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+          <p className="text-gray-500 dark:text-gray-400">
+            No print requests available yet.
+          </p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
+            Check back soon for new jobs to claim.
+          </p>
+        </div>
       </section>
-
-      {/* My Active Jobs */}
-      {myClaimedOrders.length > 0 && (
-        <section>
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-            My Active Jobs
-          </h2>
-          <div className="grid gap-4">
-            {myClaimedOrders.map(order => (
-              <OrderCard 
-                key={order.id} 
-                order={order} 
-                viewMode="seller"
-              />
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* Quick Actions */}
       <section className="p-6 rounded-xl border border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/50">
@@ -191,4 +109,3 @@ export default function SellerView({ orders }: SellerViewProps) {
     </div>
   );
 }
-

@@ -1,92 +1,176 @@
-import { analyzeMesh, analyzeMeshFromBuffer } from './meshAnalyzer.ts';
-import {
-  calculateCost,
-  getMaterial,
-  getColorModifier,
-  getAvailableMaterials,
-  getAvailableColors,
-} from './costCalculator.ts';
-import { getQuote, getFinalPrice } from './quote.ts';
-import type {
-  CostEstimate,
-  MeshAnalysis,
-  MaterialProfile,
-  EstimateCostOptions,
-} from './types.ts';
-import type { QuoteResult, QuoteOptions } from './quote.ts';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import NodeStl from 'node-stl';
+
+// ─────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────
+
+export interface PrintEstimate {
+  // Model info
+  dimensions: { x: number; y: number; z: number };
+  volumeCm3: number;
+  weightGrams: number;
+  isWatertight: boolean;
+  
+  // Print settings
+  material: string;
+  color: string;
+  infillPercent: number;
+  
+  // Costs
+  materialCost: number;
+  
+  // Available options (for dropdowns)
+  availableMaterials: string[];
+  availableColors: string[];
+}
+
+interface MaterialProfile {
+  name: string;
+  density: number;
+  pricePerKg: number;
+  wasteFactor: number;
+}
+
+interface MaterialsData {
+  materials: Record<string, MaterialProfile>;
+  colorModifiers: Record<string, { modifier: number }>;
+  colorLookup: Record<string, string>;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Load materials data
+// ─────────────────────────────────────────────────────────────
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const materialsData: MaterialsData = JSON.parse(
+  readFileSync(join(__dirname, 'materials.json'), 'utf-8')
+);
+
+const MIN_COST = 0.50; // $0.50 minimum material cost
+
+// ─────────────────────────────────────────────────────────────
+// Main API
+// ─────────────────────────────────────────────────────────────
 
 /**
- * Estimate material cost for a 3D print from an STL file
- * @param stlPath - Path to the STL file
- * @param material - Material type (e.g., 'PLA', 'ABS', 'PETG')
- * @param color - Color name (e.g., 'White', 'Silver', 'Glow Green')
- * @param infillPercent - Infill percentage (0-100), default 20
- * @param needsSupports - Whether the print needs supports, default false
- * @returns CostEstimate with breakdown
+ * Analyze an STL file and estimate print cost
+ * 
+ * @example
+ * const estimate = getEstimate('./model.stl', 'PLA', 'White', 20);
+ * console.log(estimate.materialCost); // $2.34
  */
-export function estimateCost(
+export function getEstimate(
   stlPath: string,
-  material: string,
+  material: string = 'PLA',
   color: string = 'White',
-  infillPercent: number = 20,
-  needsSupports: boolean = false
-): CostEstimate {
-  const meshAnalysis = analyzeMesh(stlPath);
-  return calculateCost(meshAnalysis, material, color, infillPercent, needsSupports);
+  infillPercent: number = 20
+): PrintEstimate {
+  // Analyze mesh
+  const stl = new NodeStl(stlPath);
+  const volumeCm3 = stl.volume;
+  const [x, y, z] = stl.boundingBox as [number, number, number];
+
+  // Get material profile
+  const matKey = material.toUpperCase().replace(/\s+/g, '_');
+  const mat = materialsData.materials[matKey];
+  if (!mat) {
+    throw new Error(`Unknown material: ${material}`);
+  }
+
+  // Calculate effective volume (shell + infill)
+  const shellRatio = 0.15;
+  const effectiveVolume = volumeCm3 * (shellRatio + (1 - shellRatio) * (infillPercent / 100));
+
+  // Calculate weight and cost
+  const weightGrams = effectiveVolume * mat.density;
+  const pricePerGram = mat.pricePerKg / 1000;
+  const colorMod = getColorModifier(color);
+  const rawCost = weightGrams * pricePerGram * colorMod * mat.wasteFactor;
+  const materialCost = round(Math.max(rawCost, MIN_COST));
+
+  return {
+    dimensions: { x: round(x), y: round(y), z: round(z) },
+    volumeCm3: round(volumeCm3),
+    weightGrams: round(weightGrams),
+    isWatertight: stl.isWatertight,
+    material: mat.name,
+    color,
+    infillPercent,
+    materialCost,
+    availableMaterials: Object.keys(materialsData.materials),
+    availableColors: Object.keys(materialsData.colorLookup),
+  };
 }
 
 /**
- * Estimate material cost from an STL buffer (for uploaded files)
+ * Analyze an STL from a Buffer (for uploaded files)
  */
-export function estimateCostFromBuffer(
+export function getEstimateFromBuffer(
   buffer: Buffer,
-  material: string,
+  material: string = 'PLA',
   color: string = 'White',
-  infillPercent: number = 20,
-  needsSupports: boolean = false
-): CostEstimate {
-  const meshAnalysis = analyzeMeshFromBuffer(buffer);
-  return calculateCost(meshAnalysis, material, color, infillPercent, needsSupports);
+  infillPercent: number = 20
+): PrintEstimate {
+  const stl = new NodeStl(buffer);
+  const volumeCm3 = stl.volume;
+  const [x, y, z] = stl.boundingBox as [number, number, number];
+
+  const matKey = material.toUpperCase().replace(/\s+/g, '_');
+  const mat = materialsData.materials[matKey];
+  if (!mat) {
+    throw new Error(`Unknown material: ${material}`);
+  }
+
+  const shellRatio = 0.15;
+  const effectiveVolume = volumeCm3 * (shellRatio + (1 - shellRatio) * (infillPercent / 100));
+  const weightGrams = effectiveVolume * mat.density;
+  const pricePerGram = mat.pricePerKg / 1000;
+  const colorMod = getColorModifier(color);
+  const rawCost = weightGrams * pricePerGram * colorMod * mat.wasteFactor;
+  const materialCost = round(Math.max(rawCost, MIN_COST));
+
+  return {
+    dimensions: { x: round(x), y: round(y), z: round(z) },
+    volumeCm3: round(volumeCm3),
+    weightGrams: round(weightGrams),
+    isWatertight: stl.isWatertight,
+    material: mat.name,
+    color,
+    infillPercent,
+    materialCost,
+    availableMaterials: Object.keys(materialsData.materials),
+    availableColors: Object.keys(materialsData.colorLookup),
+  };
 }
 
 /**
- * Estimate cost using options object
+ * Get list of available materials
  */
-export function estimateCostWithOptions(options: EstimateCostOptions): CostEstimate {
-  const {
-    stlPath,
-    material,
-    color = 'White',
-    infillPercent = 20,
-    needsSupports = false,
-  } = options;
-  return estimateCost(stlPath, material, color, infillPercent, needsSupports);
+export function getMaterials(): string[] {
+  return Object.keys(materialsData.materials);
 }
 
-// Re-export utilities
-export {
-  analyzeMesh,
-  analyzeMeshFromBuffer,
-  calculateCost,
-  getMaterial,
-  getColorModifier,
-  getAvailableMaterials,
-  getAvailableColors,
-  getQuote,
-  getFinalPrice,
-};
+/**
+ * Get list of available colors
+ */
+export function getColors(): string[] {
+  return Object.keys(materialsData.colorLookup);
+}
 
-// Re-export types
-export type {
-  CostEstimate,
-  MeshAnalysis,
-  MaterialProfile,
-  EstimateCostOptions,
-  CostBreakdown,
-  MaterialsData,
-  ColorModifierCategory,
-  MaterialProperties,
-} from './types.ts';
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
 
-export type { QuoteResult, QuoteOptions } from './quote.ts';
+function getColorModifier(color: string): number {
+  const category = materialsData.colorLookup[color];
+  return materialsData.colorModifiers[category]?.modifier ?? 1.0;
+}
 
+function round(n: number, d: number = 2): number {
+  const f = Math.pow(10, d);
+  return Math.round(n * f) / f;
+}

@@ -1,19 +1,13 @@
 'use client';
 
-import { useEffect } from 'react';
 import ViewToggle, { ViewMode } from './components/ViewToggle';
 import ConnectWallet from './components/ConnectWallet';
 import BuyerView from './components/BuyerView';
 import SellerView from './components/SellerView';
 import { WalletProvider, useWalletContext } from './context/WalletContext';
-import ordersData from '../public/orders.json';
-import { Order } from './types/order';
 
 function HomeContent() {
   const { currentRole, setCurrentRole } = useWalletContext();
-  
-  // Type assertion for imported JSON
-  const orders = ordersData.orders as Order[];
 
   const handleViewChange = (view: ViewMode) => {
     setCurrentRole(view);
@@ -34,7 +28,7 @@ function HomeContent() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-                  PrintMod
+                  FilaMint
                 </h1>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   Decentralized 3D Printing
@@ -67,9 +61,9 @@ function HomeContent() {
 
         {/* View Content */}
         {currentRole === 'buyer' ? (
-          <BuyerView orders={orders} />
+          <BuyerView />
         ) : (
-          <SellerView orders={orders} />
+          <SellerView />
         )}
       </main>
 
@@ -77,7 +71,7 @@ function HomeContent() {
       <footer className="mt-16 border-t border-gray-200 dark:border-gray-800 py-8">
         <div className="mx-auto max-w-4xl px-4 text-center">
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            PrintMod - Decentralized 3D Print Marketplace
+            FilaMint - Decentralized 3D Print Marketplace
           </p>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
             Powered by Ethereum Smart Contracts

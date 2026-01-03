@@ -1,6 +1,6 @@
 # Technical Documentation for AI Agents
 
-This document provides technical context for AI agents working on the PrintMod codebase. It covers architecture decisions, data flows, component patterns, and integration points.
+This document provides technical context for AI agents working on the FilaMint codebase. It covers architecture decisions, data flows, component patterns, and integration points.
 
 ## Architecture Overview
 
@@ -9,15 +9,21 @@ This document provides technical context for AI agents working on the PrintMod c
 │                         Frontend (Next.js)                      │
 ├────────────────────────────────────────────────────────────────┤
 │  page.tsx                                                       │
-│    ├── WalletProvider (context for role-based wallets)         │
+│    ├── WalletProvider (single wallet per session)              │
 │    ├── ViewToggle (buyer/seller switch)                        │
-│    ├── ConnectWallet (per-role wallet connection)              │
+│    ├── ConnectWallet (MetaMask connection)                     │
 │    └── BuyerView | SellerView (conditional render)             │
-│          └── OrderCard (shared component)                      │
 ├────────────────────────────────────────────────────────────────┤
-│  /hooks/useContract.ts (contract interaction hooks)            │
-├────────────────────────────────────────────────────────────────┤
-│  /api/upload (file upload endpoint)                            │
+│  /api/upload (file upload + STL analysis)                      │
+│    └── node-stl → PrintEstimate                                │
+└────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌────────────────────────────────────────────────────────────────┐
+│                    Backend (Node.js/TypeScript)                 │
+│  backend/pricing/                                               │
+│    ├── index.ts        - STL analysis & cost calculation       │
+│    └── materials.json  - Material pricing database             │
 └────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -44,13 +50,13 @@ mod/
 │   │   ├── providers.tsx         # Wagmi + React Query providers
 │   │   ├── components/
 │   │   │   ├── ViewToggle.tsx    # Buyer/Seller mode switch
-│   │   │   ├── ConnectWallet.tsx # Per-role wallet connection UI
-│   │   │   ├── BuyerView.tsx     # Buyer-side functionality
-│   │   │   ├── SellerView.tsx    # Seller-side functionality
+│   │   │   ├── ConnectWallet.tsx # MetaMask wallet connection UI
+│   │   │   ├── BuyerView.tsx     # Buyer-side: upload, configure, pricing
+│   │   │   ├── SellerView.tsx    # Seller-side: browse & claim jobs
 │   │   │   ├── OrderCard.tsx     # Order display component
 │   │   │   └── FileUpload.tsx    # Drag-drop file upload
 │   │   ├── context/
-│   │   │   └── WalletContext.tsx # Role-based wallet state management
+│   │   │   └── WalletContext.tsx # Single wallet state management
 │   │   ├── hooks/
 │   │   │   └── useContract.ts    # Smart contract interaction hooks
 │   │   ├── config/
@@ -60,10 +66,22 @@ mod/
 │   │   │   └── ethereum.d.ts     # Window.ethereum type definitions
 │   │   └── api/
 │   │       └── upload/
-│   │           └── route.ts      # File upload API endpoint
+│   │           └── route.ts      # File upload + STL analysis endpoint
 │   └── public/
-│       ├── orders.json           # Mock order data
+│       ├── orders.json           # Order data (empty by default)
 │       └── stl-temp/             # Uploaded file storage
+│
+├── backend/
+│   ├── pricing/
+│   │   ├── index.ts              # Main pricing API (getEstimate)
+│   │   ├── materials.json        # Material database (12 materials, 35+ colors)
+│   │   └── test.ts               # CLI test script
+│   ├── shipping/
+│   │   ├── types.ts              # Shipping data types
+│   │   ├── mockOrder.json        # Sample order data
+│   │   └── mockShippingData.json # Sample shipping data
+│   ├── package.json
+│   └── tsconfig.json
 │
 ├── contracts/                    # Hardhat project
 │   ├── src/
@@ -76,6 +94,126 @@ mod/
 │   │   └── deploy.js
 │   ├── hardhat.config.js
 │   └── package.json
+│
+└── tests/                        # Test files (gitignored)
+    ├── pricing/
+    │   ├── runBenchmark.ts       # Batch pricing test
+    │   └── results.html          # Generated benchmark report
+    └── files/                    # Test STL files
+```
+
+## Pricing System
+
+### Architecture
+
+```
+┌─────────────┐     ┌──────────────┐     ┌────────────────┐
+│  STL File   │────▶│   node-stl   │────▶│  PrintEstimate │
+└─────────────┘     └──────────────┘     └────────────────┘
+                           │
+                           ▼
+                    ┌──────────────┐
+                    │ materials.json│
+                    │  - densities  │
+                    │  - prices     │
+                    │  - colors     │
+                    └──────────────┘
+```
+
+### PrintEstimate Interface
+
+```typescript
+interface PrintEstimate {
+  // Model info
+  dimensions: { x: number; y: number; z: number };  // mm
+  volumeCm3: number;
+  weightGrams: number;
+  isWatertight: boolean;
+  
+  // Print settings
+  material: string;
+  color: string;
+  infillPercent: number;
+  
+  // Cost
+  materialCost: number;  // USD, minimum $0.50
+  
+  // Available options (for dropdowns)
+  availableMaterials: string[];
+  availableColors: string[];
+}
+```
+
+### Cost Calculation
+
+```
+Volume (cm³) = node-stl.volume
+
+Effective Volume = Volume × (15% shell + 85% × infill%)
+
+Weight (g) = Effective Volume × Material Density
+
+Base Cost = Weight × (Price per kg / 1000)
+
+Material Cost = max(Base Cost × Color Modifier × Waste Factor, $0.50)
+
+Total Cost = Material Cost + Shipping ($5) + Seller Margin (10-100%)
+```
+
+### Material Database Structure
+
+```json
+{
+  "materials": {
+    "PLA": {
+      "name": "PLA",
+      "density": 1.24,
+      "pricePerKg": 20.00,
+      "wasteFactor": 1.05
+    }
+  },
+  "colorModifiers": {
+    "standard": { "modifier": 1.0 },
+    "metallic": { "modifier": 1.15 },
+    "silk": { "modifier": 1.20 },
+    "glow": { "modifier": 1.25 }
+  },
+  "colorLookup": {
+    "White": "standard",
+    "Silver": "metallic",
+    "Glow Green": "glow"
+  }
+}
+```
+
+### Using the Pricing API
+
+**Backend (Node.js):**
+```typescript
+import { getEstimate } from './pricing/index.ts';
+
+const estimate = getEstimate('./model.stl', 'PLA', 'White', 20);
+console.log(estimate.materialCost);  // $0.50
+```
+
+**Frontend (via API route):**
+```typescript
+const formData = new FormData();
+formData.append('file', file);
+
+const response = await fetch('/api/upload', {
+  method: 'POST',
+  body: formData,
+});
+
+const { estimate } = await response.json();
+// estimate contains PrintEstimate data
+```
+
+**CLI Testing:**
+```bash
+cd backend
+npx ts-node --esm pricing/test.ts ../tests/files/Geekko.stl PETG Silver 30
 ```
 
 ## Smart Contracts
@@ -117,7 +255,7 @@ Cancelled                   InDispute → Settled (negotiation)
 
 ### Fee Structure
 
-All fees go to the **arbiter address** (your cold wallet), which also resolves disputes.
+All fees go to the **arbiter address** (hardcoded cold wallet), which also resolves disputes.
 
 | Fee | Amount | When Applied | Recipient |
 |-----|--------|--------------|-----------|
@@ -132,22 +270,6 @@ Total Deposit = orderAmount × 1.025
               = orderAmount + (2% gas cushion) + (0.5% platform fee)
 ```
 
-**Changing the fee recipient:** Call `factory.setArbiter(newAddress)` (only factory owner can call). This updates the arbiter for all **new** escrows; existing escrows keep their original arbiter.
-
-### Dispute Negotiation Flow
-
-6 rounds max (3 offers each party), alternating buyer/seller:
-
-| Round | Who Offers | Timeout | On Timeout |
-|-------|------------|---------|------------|
-| 1 | Buyer | 4 days | Auto-accept buyer's offer |
-| 2 | Seller | 2 days | Auto-accept seller's counter |
-| 3 | Buyer | 2 days | Auto-accept |
-| 4 | Seller | 2 days | Auto-accept |
-| 5 | Buyer | 2 days | Auto-accept |
-| 6 | Seller | 2 days | Auto-accept |
-| Final | Buyer rejects | - | Goes to arbiter (30 day timeout) |
-
 ### Contract Functions
 
 **Factory (PrintEscrowFactory.sol):**
@@ -155,7 +277,7 @@ Total Deposit = orderAmount × 1.025
 createOrder(bytes32 fileHash) → (bytes32 orderId, address escrow)
 getEscrow(bytes32 orderId) → address
 totalOrders() → uint256
-setArbiter(address) / setShippingOracle(address)  // arbiter receives all fees + resolves disputes
+setArbiter(address) / setShippingOracle(address)
 ```
 
 **Escrow (EscrowInstance.sol):**
@@ -165,226 +287,55 @@ setArbiter(address) / setShippingOracle(address)  // arbiter receives all fees +
 | `cancel()` | Buyer | Cancel before claim (5.5% fee) |
 | `claim()` | Seller | Claim order to start fulfillment |
 | `markShipped()` | Seller | Mark as shipped |
-| `claimDelivery()` | Seller | Claim delivery after 14 days if no oracle |
 | `openDispute()` | Buyer | Open dispute within 7 days of arrival |
-| `submitOffer(pct)` | Buyer | Submit settlement offer (rounds 1,3,5) |
-| `submitCounterOffer(pct)` | Seller | Counter-offer (rounds 2,4,6) |
-| `acceptOffer()` | Buyer | Accept seller's counter |
-| `acceptBuyerOffer()` | Seller | Accept buyer's offer |
-| `rejectFinalOffer()` | Buyer | Escalate to arbiter |
 | `finalizeOrder()` | Anyone | Release funds after 7-day window |
-| `finalizeOffer()` | Anyone | Auto-accept on timeout |
 | `arbiterDecide(pct)` | Arbiter | Final decision (10% tax) |
-
-### Shipping Oracle Hook
-
-Interface for future shipping label integration:
-
-```solidity
-interface IShippingOracle {
-    function isDelivered(bytes32 orderId) external view returns (bool delivered, uint256 timestamp);
-}
-```
-
-**Fallback behavior (no oracle):** Seller can claim delivery after 14 days, buyer can dispute.
-
-**To connect oracle:** `factory.setShippingOracle(oracleAddress)`
-
-### Gas Reimbursement
-
-Seller actions are reimbursed from buyer's 2% gas cushion:
-
-| Action | Who Pays Gas | Reimbursed? |
-|--------|--------------|-------------|
-| createOrder() | Buyer | No |
-| claim() | Seller | Yes |
-| markShipped() | Seller | Yes |
-| openDispute() | Buyer | Yes |
-| submitOffer() | Either | Yes |
-| finalizeOrder() | Anyone | Yes |
-
-## Core Data Types
-
-### Order Interface (`frontend/app/types/order.ts`)
-
-```typescript
-interface Order {
-  id: string;
-  status: 'pending' | 'claimed' | 'printing' | 'shipped' | 'delivered' | 'disputed';
-  
-  // Buyer info
-  buyerAddress: string;         // Ethereum address
-  
-  // File info
-  fileName: string;             // Display name
-  fileUrl: string;              // Path to uploaded file
-  fileSizeMB: number;           // File size in megabytes
-  dimensions: string;           // e.g., "80x60x20mm"
-  
-  // Print specifications
-  material: 'PLA' | 'ABS' | 'PETG' | 'TPU' | 'Resin';
-  color: string;                // Color name
-  infill: number;               // 0-100 percentage
-  printTimeHours: number;       // Estimated print duration
-  
-  // Financial
-  escrowAmountEth: number;      // ETH locked in escrow
-  
-  // Seller info (populated when claimed)
-  sellerAddress?: string;       // Printer's Ethereum address
-  claimedAt?: string;           // ISO timestamp
-  
-  // Timestamps
-  createdAt: string;            // ISO timestamp
-  updatedAt: string;            // ISO timestamp
-}
-```
 
 ## Wallet System
 
-### Role-Based Wallet Architecture
+### Single Wallet Architecture
 
-The app supports **separate wallets for buyer and seller roles**. This allows users to use different accounts for buying vs selling.
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      WalletContext                               │
-├─────────────────────────────────────────────────────────────────┤
-│  roleWallets: {                                                  │
-│    buyer: "0x742d..." | null,                                   │
-│    seller: "0x8ba1..." | null                                   │
-│  }                                                               │
-│                                                                  │
-│  currentRole: 'buyer' | 'seller'                                │
-│  currentRoleAddress: string | null  (address for active role)   │
-├─────────────────────────────────────────────────────────────────┤
-│  Methods:                                                        │
-│  - connectWalletForRole(role) → prompts MetaMask                │
-│  - disconnectWalletForRole(role) → clears only that role        │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Wallet Storage
-
-Wallet addresses are stored in **localStorage** under key `printmod_role_wallets`:
-
-```json
-{
-  "buyer": "0x742d35cc6634c0532925a3b844bc9e7595f2bd61",
-  "seller": "0x8ba1f109551bd432803012645ac136ddd64dba72"
-}
-```
-
-### Accessing Wallet Addresses
+The app uses a **single wallet per session** that persists across buyer/seller views.
 
 ```typescript
-import { useWalletContext } from '../context/WalletContext';
-
-function MyComponent() {
-  const { 
-    roleWallets,           // { buyer: string|null, seller: string|null }
-    currentRole,           // 'buyer' | 'seller'
-    currentRoleAddress,    // address for active role
-    isConnectedForCurrentRole,
-    connectWalletForRole,
-    disconnectWalletForRole,
-  } = useWalletContext();
-  
-  // Get specific role's address
-  const buyerAddress = roleWallets.buyer;
-  const sellerAddress = roleWallets.seller;
+interface WalletContextType {
+  currentRole: 'buyer' | 'seller';
+  setCurrentRole: (role: ViewMode) => void;
+  walletAddress: string | null;
+  connectWallet: () => Promise<void>;
+  disconnectWallet: () => void;
+  isConnected: boolean;
+  isConnecting: boolean;
+  error: string | null;
 }
 ```
 
-## Contract Hooks System
+### Connection Flow
 
-### How Contract Hooks Work
+1. User clicks "Connect Wallet"
+2. `wallet_revokePermissions` clears previous permissions (if supported)
+3. `wallet_requestPermissions` shows MetaMask account picker
+4. Selected account address is stored in state
+5. Account persists until user disconnects or page refresh
 
-Contract hooks wrap blockchain interactions, providing a clean API for components:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Component                                 │
-│   const { createOrder, isLoading, error } = useCreateOrder();   │
-│   onClick={() => createOrder(fileHash, material, infill, eth)}  │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     Contract Hook                                │
-│  1. Validates active MetaMask account matches expected role     │
-│  2. Gets signer from MetaMask                                   │
-│  3. Creates contract instance with signer                       │
-│  4. Calls contract method                                       │
-│  5. Waits for transaction confirmation                          │
-│  6. Returns result + manages loading/error states               │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         MetaMask                                │
-│  - Prompts user to sign transaction                            │
-│  - Broadcasts to blockchain network                            │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Smart Contract                             │
-│  - msg.sender = signer's address                               │
-│  - Executes function, updates blockchain state                 │
-│  - Emits events                                                │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Key Concepts
-
-| Term | Description |
-|------|-------------|
-| **Provider** | Read-only connection to blockchain. Can call view functions. |
-| **Signer** | Has private key, can sign transactions. Comes from MetaMask. |
-| **Contract Instance** | JavaScript object representing deployed contract. |
-| **ABI** | Contract interface definition (functions, events, types). |
-| **msg.sender** | The address that signed the transaction (signer's address). |
-
-### Contract Configuration
-
-Update contract addresses in `frontend/.env.local`:
-
-```env
-NEXT_PUBLIC_ESCROW_FACTORY_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
-NEXT_PUBLIC_CHAIN_ID=31337
-```
-
-## Component Patterns
-
-### State Management
-
-- **Local state**: React `useState` for component-specific state
-- **Wallet state**: `WalletContext` for role-based wallet management
-- **Contract state**: Custom hooks manage loading/error/data per operation
-
-### View Toggle Pattern
-
-The app uses a single-page architecture with view switching:
+### Listening for Account Changes
 
 ```typescript
-// page.tsx
-function HomeContent() {
-  const { currentRole, setCurrentRole } = useWalletContext();
-
-  return (
-    <>
-      <ViewToggle currentView={currentRole} onViewChange={setCurrentRole} />
-      {currentRole === 'buyer' ? <BuyerView /> : <SellerView />}
-    </>
-  );
-}
+useEffect(() => {
+  window.ethereum.on('accountsChanged', (accounts) => {
+    if (accounts.length === 0) {
+      setWalletAddress(null);  // Disconnected
+    } else if (walletAddress) {
+      setWalletAddress(accounts[0]);  // Switched accounts
+    }
+  });
+}, [walletAddress]);
 ```
 
 ## File Upload Flow
 
 ```
-User drops file
+User drops STL file
       │
       ▼
 FileUpload.tsx validates extension (.stl, .obj, .3mf)
@@ -393,13 +344,38 @@ FileUpload.tsx validates extension (.stl, .obj, .3mf)
 POST /api/upload with FormData
       │
       ▼
-route.ts saves to /public/stl-temp/
+route.ts:
+  1. Saves file to /public/stl-temp/
+  2. Calls getEstimateFromBuffer() for STL files
+  3. Returns file info + PrintEstimate
       │
       ▼
-Returns { fileName, originalName, size }
-      │
-      ▼
-Future: Upload to IPFS, store hash on-chain
+BuyerView.tsx displays:
+  - Model dimensions, volume, weight
+  - Material/color/infill selectors
+  - Cost breakdown with seller margin slider
+  - Total cost
+```
+
+## Frontend Cost Recalculation
+
+When user changes material, color, or infill, cost is recalculated client-side:
+
+```typescript
+useEffect(() => {
+  if (!estimate || baseVolumeCm3 === 0) return;
+  
+  const matData = MATERIAL_DATA[material];
+  const colorMod = COLOR_MODIFIERS[color] ?? 1.0;
+  
+  const shellRatio = 0.15;
+  const effectiveVolume = baseVolumeCm3 * (shellRatio + (1 - shellRatio) * (infillPercent / 100));
+  const weightGrams = effectiveVolume * matData.density;
+  const rawCost = weightGrams * (matData.pricePerKg / 1000) * colorMod * matData.wasteFactor;
+  const materialCost = Math.max(rawCost, 0.50);  // $0.50 minimum
+  
+  setEstimate({ ...estimate, materialCost });
+}, [material, color, infillPercent, baseVolumeCm3]);
 ```
 
 ## Styling Conventions
@@ -411,10 +387,6 @@ Future: Upload to IPFS, store hash on-chain
   - Success: Emerald/Teal
   - Warning: Amber/Orange
   - Error: Red/Rose
-  - Buyer role: Blue
-  - Seller role: Emerald
-- **Spacing**: 4px base unit (Tailwind default)
-- **Border Radius**: `rounded-lg` (8px) for cards, `rounded-xl` (12px) for buttons
 
 ## Environment Setup
 
@@ -423,6 +395,10 @@ Future: Upload to IPFS, store hash on-chain
 cd frontend
 npm install
 npm run dev          # Start dev server on :3000
+
+# Backend
+cd backend
+npm install
 
 # Contracts
 cd contracts
@@ -437,77 +413,71 @@ npx hardhat run scripts/deploy.js --network localhost  # Deploy (Terminal 2)
 Create `frontend/.env.local`:
 
 ```env
-# Contract addresses (update after deployment)
 NEXT_PUBLIC_ESCROW_FACTORY_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
-
-# Chain configuration
 NEXT_PUBLIC_CHAIN_ID=31337
 ```
 
 ## Common Tasks for AI Agents
 
-### Deploying Contracts
+### Testing Pricing
 
 ```bash
-cd contracts
-npx hardhat node                                    # Terminal 1
-npx hardhat run scripts/deploy.js --network localhost  # Terminal 2
+cd backend
+npx ts-node --esm pricing/test.ts [file] [material] [color] [infill]
+
+# Examples:
+npx ts-node --esm pricing/test.ts ../tests/files/Geekko.stl PLA White 20
+npx ts-node --esm pricing/test.ts --help  # Show available materials/colors
 ```
 
-Copy the factory address to `frontend/.env.local`.
+### Running Benchmark
 
-### Adding a New Order Status
+```bash
+cd backend
+npm run benchmark
+# Opens tests/pricing/results.html with cost vs weight graphs
+```
 
-1. Update `OrderStatus` type in `frontend/app/types/order.ts`
-2. Add status config in `OrderCard.tsx` (`statusConfig` object)
-3. Update filtering logic in `SellerView.tsx` if needed
+### Adding a New Material
 
-### Adding a New Contract Hook
-
-1. Define the hook in `frontend/app/hooks/useContract.ts`
-2. Specify `requiredRole` if it's a role-specific action
-3. Handle loading/error/success states
-4. Export from the hooks file
-
-Example:
-```typescript
-export function useClaimOrder() {
-  const [state, setState] = useState({ data: null, error: null, isLoading: false });
-
-  const claimOrder = useCallback(async (escrowAddress: string) => {
-    setState({ data: null, error: null, isLoading: true });
-    try {
-      const signer = await getSigner();
-      const escrow = new Contract(escrowAddress, EscrowInstanceABI, signer);
-      const tx = await escrow.claim();
-      const receipt = await tx.wait();
-      setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
-      return receipt;
-    } catch (err) {
-      setState({ data: null, error: err.message, isLoading: false });
-      throw err;
-    }
-  }, []);
-
-  return { claimOrder, ...state };
+1. Add to `backend/pricing/materials.json`:
+```json
+"NEW_MATERIAL": {
+  "name": "New Material",
+  "fullName": "Full Material Name",
+  "density": 1.20,
+  "pricePerKg": 30.00,
+  "wasteFactor": 1.08,
+  "supportFactor": 1.20,
+  "properties": { ... }
 }
 ```
 
+2. Add to `MATERIAL_DATA` in `frontend/app/components/BuyerView.tsx`
+
+### Adding a New Color
+
+1. Add color category to `colorModifiers` in `materials.json`
+2. Add color name to `colorLookup` mapping
+3. Add to `COLOR_MODIFIERS` in `BuyerView.tsx`
+
 ## Troubleshooting
+
+### "Module not found: node-stl"
+```bash
+cd frontend
+npm install  # Installs node-stl dependency
+```
+
+### Pricing returns $0.50 for everything
+- Check that `node-stl` returns volume in cm³ (not mm³)
+- Verify material key matches (case-insensitive, spaces → underscores)
+
+### MetaMask auto-connects without prompt
+- This is expected if site was previously authorized
+- Use `wallet_revokePermissions` before `wallet_requestPermissions`
+- Or manually disconnect site from MetaMask settings
 
 ### Contract compilation errors
 - Run `npx hardhat clean` then `npx hardhat compile`
 - Check Solidity version matches in `hardhat.config.js`
-
-### "Nothing to compile"
-- Contracts are in `contracts/src/`, config uses `sources: "./src"`
-
-### Wallet connection issues
-- Ensure MetaMask is installed
-- Check that Hardhat network is added to MetaMask (Chain ID: 31337)
-- Verify Hardhat node is running if testing locally
-
-### "Wrong wallet active" error
-- The active MetaMask account doesn't match the saved address for the current role
-- Switch accounts in MetaMask to the expected address
-- Or disconnect and reconnect with the correct account

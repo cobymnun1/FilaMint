@@ -4,62 +4,53 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 
 type ViewMode = 'buyer' | 'seller' | 'arbiter';
 
-interface RoleWallets {
-  buyer: string | null;
-  seller: string | null;
-  arbiter: string | null;
-}
-
 interface WalletContextType {
-  roleWallets: RoleWallets;
   currentRole: ViewMode;
   setCurrentRole: (role: ViewMode) => void;
-  connectWalletForRole: (role: ViewMode) => Promise<void>;
-  disconnectWalletForRole: (role: ViewMode) => void;
-  isConnectedForCurrentRole: boolean;
-  currentRoleAddress: string | null;
+  walletAddress: string | null;
+  connectWallet: () => Promise<void>;
+  disconnectWallet: () => void;
+  isConnected: boolean;
   isConnecting: boolean;
   error: string | null;
 }
 
 const WalletContext = createContext<WalletContextType | null>(null);
 
-const STORAGE_KEY = 'printmod_role_wallets';
-
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [currentRole, setCurrentRole] = useState<ViewMode>('buyer');
-  const [roleWallets, setRoleWallets] = useState<RoleWallets>({
-    buyer: null,
-    seller: null,
-    arbiter: null,
-  });
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load from localStorage on mount
+  // Listen for account changes in MetaMask
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        setRoleWallets(parsed);
-      } catch {
-        // Invalid JSON, ignore
+    if (typeof window === 'undefined' || !window.ethereum) return;
+
+    const handleAccountsChanged = (accounts: string[]) => {
+      if (accounts.length === 0) {
+        // User disconnected from MetaMask
+        setWalletAddress(null);
+      } else if (walletAddress) {
+        // Account changed while connected - update to new account
+        setWalletAddress(accounts[0].toLowerCase());
       }
-    }
-  }, []);
+    };
 
-  // Save to localStorage when roleWallets changes
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(roleWallets));
-  }, [roleWallets]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const provider = window.ethereum as any;
+    provider.on('accountsChanged', handleAccountsChanged);
 
-  const connectWalletForRole = async (role: ViewMode) => {
+    return () => {
+      provider.removeListener('accountsChanged', handleAccountsChanged);
+    };
+  }, [walletAddress]);
+
+  const connectWallet = async () => {
     setIsConnecting(true);
     setError(null);
 
     try {
-      // Check if MetaMask is available
       if (typeof window === 'undefined' || !window.ethereum) {
         throw new Error('MetaMask not installed. Please install the MetaMask browser extension.');
       }
@@ -67,77 +58,78 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const provider = window.ethereum as any;
       
-      // Handle case where multiple wallets are installed
+      // Find MetaMask if multiple wallets installed
+      let activeProvider = provider;
       if (provider.providers && Array.isArray(provider.providers)) {
-        // Find MetaMask among multiple providers
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const metamaskProvider = provider.providers.find((p: any) => p.isMetaMask);
         if (metamaskProvider) {
-          const accounts = await metamaskProvider.request({
-            method: 'eth_requestAccounts',
-          });
-          if (accounts && Array.isArray(accounts) && accounts.length > 0) {
-            const address = (accounts[0] as string).toLowerCase();
-            setRoleWallets(prev => ({
-              ...prev,
-              [role]: address,
-            }));
-            return;
-          }
+          activeProvider = metamaskProvider;
         }
       }
 
-      // Standard single provider case
-      const accounts = await provider.request({
-        method: 'eth_requestAccounts',
+      // First try to revoke existing permissions to force re-approval
+      try {
+        await activeProvider.request({
+          method: 'wallet_revokePermissions',
+          params: [{ eth_accounts: {} }],
+        });
+      } catch {
+        // wallet_revokePermissions may not be supported, continue anyway
+      }
+
+      // Now request fresh permissions - should show approval popup
+      const permissions = await activeProvider.request({
+        method: 'wallet_requestPermissions',
+        params: [{ eth_accounts: {} }],
       });
 
-      if (accounts && Array.isArray(accounts) && accounts.length > 0) {
-        const address = (accounts[0] as string).toLowerCase();
-        setRoleWallets(prev => ({
-          ...prev,
-          [role]: address,
-        }));
+      // Extract accounts from permissions response
+      const accountsPermission = permissions.find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (p: any) => p.parentCapability === 'eth_accounts'
+      );
+
+      if (accountsPermission?.caveats?.[0]?.value?.length > 0) {
+        setWalletAddress(accountsPermission.caveats[0].value[0].toLowerCase());
       } else {
-        throw new Error('No accounts returned from wallet');
+        // Fallback to eth_accounts
+        const accounts = await activeProvider.request({
+          method: 'eth_accounts',
+        });
+        if (accounts && accounts.length > 0) {
+          setWalletAddress((accounts[0] as string).toLowerCase());
+        } else {
+          throw new Error('No accounts returned from wallet');
+        }
       }
     } catch (err: unknown) {
       console.error('Wallet connection error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to connect';
       if (errorMessage.includes('rejected') || errorMessage.includes('denied') || errorMessage.includes('User rejected')) {
         setError('Connection rejected by user');
-      } else if (errorMessage.includes('Unexpected error')) {
-        setError('Wallet extension error. Try refreshing the page or disabling other wallet extensions.');
       } else {
         setError(errorMessage);
       }
-      throw err; // Re-throw so the calling code can catch it
     } finally {
       setIsConnecting(false);
     }
   };
 
-  const disconnectWalletForRole = (role: ViewMode) => {
-    setRoleWallets(prev => ({
-      ...prev,
-      [role]: null,
-    }));
+  const disconnectWallet = () => {
+    setWalletAddress(null);
     setError(null);
   };
-
-  const currentRoleAddress = roleWallets[currentRole];
-  const isConnectedForCurrentRole = currentRoleAddress !== null;
 
   return (
     <WalletContext.Provider
       value={{
-        roleWallets,
         currentRole,
         setCurrentRole,
-        connectWalletForRole,
-        disconnectWalletForRole,
-        isConnectedForCurrentRole,
-        currentRoleAddress,
+        walletAddress,
+        connectWallet,
+        disconnectWallet,
+        isConnected: walletAddress !== null,
         isConnecting,
         error,
       }}

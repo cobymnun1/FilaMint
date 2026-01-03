@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "test:shipping": "npx ts-node --esm shipping/test.ts",
-    "test:pricing": "npx ts-node --esm pricing/test.ts",
     "benchmark": "npx ts-node --esm ../tests/pricing/runBenchmark.ts"
   },
   "dependencies": {

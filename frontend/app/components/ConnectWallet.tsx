@@ -2,86 +2,57 @@
 
 import { useWalletContext } from '../context/WalletContext';
 
-interface ConnectWalletProps {
-  className?: string;
-}
-
-export default function ConnectWallet({ className = '' }: ConnectWalletProps) {
+export default function ConnectWallet() {
   const { 
-    currentRole,
-    connectWalletForRole,
-    disconnectWalletForRole,
-    isConnectedForCurrentRole,
-    currentRoleAddress,
+    walletAddress,
+    connectWallet,
+    disconnectWallet,
+    isConnected,
     isConnecting,
     error,
   } = useWalletContext();
-
-  const handleConnect = () => {
-    connectWalletForRole(currentRole);
-  };
-
-  const handleDisconnect = () => {
-    disconnectWalletForRole(currentRole);
-  };
 
   const truncateAddress = (addr: string) => {
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
   };
 
-  const roleLabel = currentRole === 'buyer' ? 'Buyer' : 'Seller';
-  const roleColor = currentRole === 'buyer' 
-    ? 'text-blue-600 dark:text-blue-400' 
-    : 'text-emerald-600 dark:text-emerald-400';
-
-  // Connected for this role
-  if (isConnectedForCurrentRole && currentRoleAddress) {
+  if (isConnected && walletAddress) {
     return (
       <div className="flex flex-col items-end gap-1">
         <button
-          onClick={handleDisconnect}
-          className={`
-            group flex items-center gap-2 px-4 py-2.5 rounded-xl
+          onClick={disconnectWallet}
+          className="group flex items-center gap-2 px-4 py-2.5 rounded-xl
             bg-gradient-to-r from-emerald-500/10 to-teal-500/10
             border border-emerald-500/30 dark:border-emerald-400/30
             text-emerald-700 dark:text-emerald-300
             hover:from-red-500/10 hover:to-rose-500/10
             hover:border-red-500/30 dark:hover:border-red-400/30
             hover:text-red-700 dark:hover:text-red-300
-            transition-all duration-200
-            ${className}
-          `}
+            transition-all duration-200"
         >
           <span className="w-2 h-2 rounded-full bg-emerald-500 group-hover:bg-red-500 transition-colors" />
           <span className="font-mono text-sm font-medium">
-            <span className="group-hover:hidden">{truncateAddress(currentRoleAddress)}</span>
+            <span className="group-hover:hidden">{truncateAddress(walletAddress)}</span>
             <span className="hidden group-hover:inline">Disconnect</span>
           </span>
         </button>
-        <p className={`text-xs ${roleColor}`}>
-          {roleLabel} Wallet
-        </p>
       </div>
     );
   }
 
-  // Not connected for this role
   return (
     <div className="flex flex-col items-end gap-1">
       <button
-        onClick={handleConnect}
+        onClick={connectWallet}
         disabled={isConnecting}
-        className={`
-          flex items-center gap-2 px-5 py-2.5 rounded-xl
+        className="flex items-center gap-2 px-5 py-2.5 rounded-xl
           bg-gradient-to-r from-violet-600 to-indigo-600
           hover:from-violet-700 hover:to-indigo-700
           text-white font-semibold text-sm
           shadow-lg shadow-violet-500/25
           hover:shadow-xl hover:shadow-violet-500/30
           disabled:opacity-50 disabled:cursor-not-allowed
-          transition-all duration-200
-          ${className}
-        `}
+          transition-all duration-200"
       >
         {isConnecting ? (
           <>
@@ -96,7 +67,7 @@ export default function ConnectWallet({ className = '' }: ConnectWalletProps) {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
-            Connect {roleLabel} Wallet
+            Connect Wallet
           </>
         )}
       </button>

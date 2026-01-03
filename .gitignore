@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.next/
+out/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Generated labels (contain sensitive mock data)
+labels/*.png
+labels/*.pdf
+labels/*.json
+!labels/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Tests folder (STL files, benchmarks, results)
+tests/
+
+# Uploaded files
+frontend/public/stl-temp/
+uploads/
+
+# TypeScript
+*.tsbuildinfo
+
+# Hardhat
+contracts/cache/
+contracts/artifacts/
+
+# Cursor/Editor
+.cursor/
+

@@ -1,6 +1,6 @@
-# PrintMod - Decentralized 3D Print Marketplace
+# FilaMint - Decentralized 3D Print Marketplace
 
-A Web3-powered marketplace connecting people who need 3D prints with printer owners. Buyers upload STL files and deposit ETH into escrow; sellers claim jobs, print them, and receive payment upon delivery confirmation.
+A Web3-powered marketplace connecting people who need 3D prints with printer owners. Buyers upload STL files, get instant cost estimates, and deposit ETH into escrow; sellers claim jobs, print them, and receive payment upon delivery confirmation.
 
 ## Project Structure
 
@@ -9,14 +9,19 @@ mod/
 ├── frontend/          # Next.js 16 web application
 │   ├── app/
 │   │   ├── components/    # React components
+│   │   ├── context/       # Wallet context provider
 │   │   ├── types/         # TypeScript interfaces
-│   │   └── api/           # API routes (file upload)
-│   └── public/            # Static assets & mock data
-├── backend/           # Backend services (planned)
+│   │   └── api/           # API routes (file upload + pricing)
+│   └── public/            # Static assets
+├── backend/           # Backend services
+│   ├── pricing/           # STL analysis & cost estimation
+│   │   ├── index.ts       # Main pricing API
+│   │   └── materials.json # Material pricing database
+│   └── shipping/          # Shipping types & mock data
 ├── contracts/         # Solidity smart contracts (Hardhat)
 │   ├── src/               # Contract source files
 │   └── scripts/           # Deployment scripts
-└── uploads/           # Uploaded STL files storage
+└── tests/             # Test files & benchmarks
 ```
 
 ## Quick Start
@@ -25,17 +30,21 @@ mod/
 
 - Node.js 18+
 - npm or yarn
+- MetaMask browser extension
 
 ### Installation
 
 ```bash
-# Clone and navigate
-cd mod/frontend
-
-# Install dependencies
+# Install frontend dependencies
+cd frontend
 npm install
 
-# Start development server
+# Install backend dependencies
+cd ../backend
+npm install
+
+# Start frontend development server
+cd ../frontend
 npm run dev
 ```
 
@@ -44,9 +53,10 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ## Features
 
 ### Buyer Side
-- **File Upload**: Drag & drop STL/OBJ/3MF files
-- **Print Configuration**: Select material, color, infill percentage
-- **Escrow Deposit**: Set ETH amount for the job
+- **File Upload**: Drag & drop STL files with instant analysis
+- **Cost Estimation**: Real-time pricing based on volume, material, color, and infill
+- **Print Configuration**: Select from 12+ materials and 35+ colors
+- **Seller Margin Slider**: Set profit margin (10-100%) to attract printers
 - **Order Tracking**: View status of submitted print requests
 
 ### Seller Side
@@ -55,8 +65,15 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 - **Claim Jobs**: Accept print requests to fulfill
 - **Job Management**: Track active and completed jobs
 
+### Pricing System
+- **Automatic STL Analysis**: Volume, dimensions, weight calculation using `node-stl`
+- **Material Database**: 12 materials with accurate densities and pricing
+- **Color Modifiers**: Standard, metallic, silk, glow-in-dark, transparent options
+- **Infill Calculation**: Shell + infill volume estimation
+- **$0.50 Minimum**: Floor price for small prints
+
 ### Shared
-- **Wallet Connection**: Unified wallet button across both views
+- **Wallet Connection**: MetaMask integration with account selection
 - **View Toggle**: Switch between buyer/seller modes
 - **Order Cards**: Consistent display of job details and status
 
@@ -66,8 +83,42 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 |-------|------------|
 | Frontend | Next.js 16, React 19, TypeScript |
 | Styling | Tailwind CSS 4 |
+| Pricing | node-stl, custom material database |
 | Smart Contracts | Solidity 0.8.24, Hardhat, EIP-1167 Clones |
 | Blockchain | Ethereum / EVM-compatible |
+
+## Pricing API
+
+### Backend Usage
+
+```typescript
+import { getEstimate } from './pricing/index.ts';
+
+const estimate = getEstimate('./model.stl', 'PLA', 'White', 20);
+// Returns: { dimensions, volumeCm3, weightGrams, materialCost, ... }
+```
+
+### Supported Materials
+
+| Material | Density | Price/kg |
+|----------|---------|----------|
+| PLA | 1.24 g/cm³ | $20 |
+| ABS | 1.04 g/cm³ | $22 |
+| PETG | 1.27 g/cm³ | $25 |
+| TPU | 1.21 g/cm³ | $35 |
+| Nylon | 1.14 g/cm³ | $45 |
+| ASA | 1.07 g/cm³ | $30 |
+| PC | 1.20 g/cm³ | $40 |
+| Carbon Fiber PLA | 1.30 g/cm³ | $50 |
+
+### Color Modifiers
+
+- **Standard** (1.0x): White, Black, Gray, Red, Blue, Green, etc.
+- **Metallic** (1.15x): Silver, Gold, Bronze, Copper
+- **Silk** (1.20x): Silk White, Silk Blue, Silk Gold, etc.
+- **Glow-in-Dark** (1.25x): Glow Green, Glow Blue, etc.
+- **Transparent** (1.10x): Clear, Transparent Blue, etc.
+- **Rainbow** (1.30x): Rainbow, Galaxy, Marble
 
 ## Order Lifecycle
 
@@ -80,14 +131,6 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
      └───────────────────────▶│ Disputed │◀────────────────────────┘
                               └──────────┘
 ```
-
-**Status Definitions:**
-- `pending` - Buyer submitted, awaiting printer claim
-- `claimed` - Printer accepted, preparing to print
-- `printing` - Currently being printed
-- `shipped` - Print complete, in transit to buyer
-- `delivered` - Buyer confirmed receipt, escrow released
-- `disputed` - Issue raised, requires resolution
 
 ## Smart Contracts
 
@@ -110,8 +153,6 @@ npx hardhat node                                      # Terminal 1
 npx hardhat run scripts/deploy.js --network localhost # Terminal 2
 ```
 
-Update `ARBITER_ADDRESS` in `scripts/deploy.js` with your cold wallet address before production deployment.
-
 ## Environment Variables
 
 Create `.env.local` in the frontend directory:
@@ -124,24 +165,23 @@ NEXT_PUBLIC_CHAIN_ID=31337
 ## Development
 
 ```bash
-# Run development server
+# Frontend dev server
+cd frontend
 npm run dev
 
-# Build for production
-npm run build
+# Test pricing API
+cd backend
+npx ts-node --esm pricing/test.ts ../tests/files/Geekko.stl PLA White 20
 
-# Run production build
-npm start
-
-# Lint code
-npm run lint
+# Run pricing benchmark
+npm run benchmark
 ```
 
 ## API Routes
 
 ### POST /api/upload
 
-Upload a 3D model file.
+Upload a 3D model file and get instant cost estimate.
 
 **Request:** `multipart/form-data` with `file` field
 
@@ -151,24 +191,25 @@ Upload a 3D model file.
   "success": true,
   "fileName": "uuid-filename.stl",
   "originalName": "my-model.stl",
-  "size": 4200000
+  "size": 4200000,
+  "estimate": {
+    "dimensions": { "x": 80, "y": 60, "z": 20 },
+    "volumeCm3": 9.25,
+    "weightGrams": 3.67,
+    "materialCost": 0.50,
+    "availableMaterials": ["PLA", "ABS", "PETG", ...],
+    "availableColors": ["White", "Black", "Silver", ...]
+  }
 }
 ```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 
 ## Roadmap
 
 - [x] Smart contract development (escrow, dispute resolution)
 - [x] Wallet integration (MetaMask)
+- [x] Print cost estimation algorithm
+- [x] Material pricing database
 - [ ] STL file preview/viewer
-- [ ] Print cost estimation algorithm
 - [ ] Reputation system for printers
 - [ ] Shipping oracle integration
 - [ ] Multi-chain support
@@ -177,4 +218,3 @@ Upload a 3D model file.
 ## License
 
 MIT License - see LICENSE file for details.
-
