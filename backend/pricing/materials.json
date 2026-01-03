@@ -1,0 +1,248 @@
+{
+  "materials": {
+    "PLA": {
+      "name": "PLA",
+      "fullName": "Polylactic Acid",
+      "density": 1.24,
+      "pricePerKg": 20.00,
+      "wasteFactor": 1.05,
+      "supportFactor": 1.15,
+      "properties": {
+        "heatResistant": false,
+        "flexible": false,
+        "uvResistant": false,
+        "foodSafe": true
+      }
+    },
+    "ABS": {
+      "name": "ABS",
+      "fullName": "Acrylonitrile Butadiene Styrene",
+      "density": 1.04,
+      "pricePerKg": 22.00,
+      "wasteFactor": 1.08,
+      "supportFactor": 1.20,
+      "properties": {
+        "heatResistant": true,
+        "flexible": false,
+        "uvResistant": false,
+        "foodSafe": false
+      }
+    },
+    "PETG": {
+      "name": "PETG",
+      "fullName": "Polyethylene Terephthalate Glycol",
+      "density": 1.27,
+      "pricePerKg": 25.00,
+      "wasteFactor": 1.06,
+      "supportFactor": 1.18,
+      "properties": {
+        "heatResistant": true,
+        "flexible": false,
+        "uvResistant": false,
+        "foodSafe": true
+      }
+    },
+    "TPU": {
+      "name": "TPU",
+      "fullName": "Thermoplastic Polyurethane",
+      "density": 1.21,
+      "pricePerKg": 35.00,
+      "wasteFactor": 1.10,
+      "supportFactor": 1.25,
+      "properties": {
+        "heatResistant": false,
+        "flexible": true,
+        "uvResistant": false,
+        "foodSafe": false
+      }
+    },
+    "NYLON": {
+      "name": "Nylon",
+      "fullName": "Polyamide",
+      "density": 1.14,
+      "pricePerKg": 45.00,
+      "wasteFactor": 1.08,
+      "supportFactor": 1.20,
+      "properties": {
+        "heatResistant": true,
+        "flexible": false,
+        "uvResistant": false,
+        "foodSafe": false
+      }
+    },
+    "ASA": {
+      "name": "ASA",
+      "fullName": "Acrylonitrile Styrene Acrylate",
+      "density": 1.07,
+      "pricePerKg": 30.00,
+      "wasteFactor": 1.07,
+      "supportFactor": 1.18,
+      "properties": {
+        "heatResistant": true,
+        "flexible": false,
+        "uvResistant": true,
+        "foodSafe": false
+      }
+    },
+    "PC": {
+      "name": "PC",
+      "fullName": "Polycarbonate",
+      "density": 1.20,
+      "pricePerKg": 40.00,
+      "wasteFactor": 1.10,
+      "supportFactor": 1.22,
+      "properties": {
+        "heatResistant": true,
+        "flexible": false,
+        "uvResistant": false,
+        "foodSafe": false
+      }
+    },
+    "HIPS": {
+      "name": "HIPS",
+      "fullName": "High Impact Polystyrene",
+      "density": 1.04,
+      "pricePerKg": 22.00,
+      "wasteFactor": 1.06,
+      "supportFactor": 1.15,
+      "properties": {
+        "heatResistant": false,
+        "flexible": false,
+        "uvResistant": false,
+        "foodSafe": false
+      }
+    },
+    "PVA": {
+      "name": "PVA",
+      "fullName": "Polyvinyl Alcohol",
+      "density": 1.23,
+      "pricePerKg": 60.00,
+      "wasteFactor": 1.12,
+      "supportFactor": 1.00,
+      "properties": {
+        "heatResistant": false,
+        "flexible": false,
+        "uvResistant": false,
+        "foodSafe": false
+      }
+    },
+    "CF_PLA": {
+      "name": "Carbon Fiber PLA",
+      "fullName": "Carbon Fiber Reinforced PLA",
+      "density": 1.30,
+      "pricePerKg": 50.00,
+      "wasteFactor": 1.08,
+      "supportFactor": 1.18,
+      "properties": {
+        "heatResistant": false,
+        "flexible": false,
+        "uvResistant": false,
+        "foodSafe": false
+      }
+    },
+    "WOOD_PLA": {
+      "name": "Wood PLA",
+      "fullName": "Wood Fiber Reinforced PLA",
+      "density": 1.15,
+      "pricePerKg": 35.00,
+      "wasteFactor": 1.10,
+      "supportFactor": 1.20,
+      "properties": {
+        "heatResistant": false,
+        "flexible": false,
+        "uvResistant": false,
+        "foodSafe": false
+      }
+    },
+    "RESIN_STANDARD": {
+      "name": "Standard Resin",
+      "fullName": "Standard UV Curing Resin",
+      "density": 1.10,
+      "pricePerKg": 35.00,
+      "wasteFactor": 1.15,
+      "supportFactor": 1.30,
+      "properties": {
+        "heatResistant": false,
+        "flexible": false,
+        "uvResistant": false,
+        "foodSafe": false
+      }
+    }
+  },
+  "colorModifiers": {
+    "standard": {
+      "name": "Standard",
+      "modifier": 1.00,
+      "colors": ["White", "Black", "Gray", "Red", "Blue", "Green", "Yellow", "Orange"]
+    },
+    "metallic": {
+      "name": "Metallic",
+      "modifier": 1.15,
+      "colors": ["Silver", "Gold", "Bronze", "Copper", "Chrome"]
+    },
+    "silk": {
+      "name": "Silk",
+      "modifier": 1.20,
+      "colors": ["Silk White", "Silk Blue", "Silk Red", "Silk Green", "Silk Gold", "Silk Silver"]
+    },
+    "glow": {
+      "name": "Glow-in-Dark",
+      "modifier": 1.25,
+      "colors": ["Glow Green", "Glow Blue", "Glow White", "Glow Orange"]
+    },
+    "transparent": {
+      "name": "Transparent",
+      "modifier": 1.10,
+      "colors": ["Clear", "Transparent Blue", "Transparent Red", "Transparent Green"]
+    },
+    "matte": {
+      "name": "Matte",
+      "modifier": 1.05,
+      "colors": ["Matte Black", "Matte White", "Matte Gray"]
+    },
+    "rainbow": {
+      "name": "Rainbow/Multicolor",
+      "modifier": 1.30,
+      "colors": ["Rainbow", "Galaxy", "Marble"]
+    }
+  },
+  "colorLookup": {
+    "White": "standard",
+    "Black": "standard",
+    "Gray": "standard",
+    "Red": "standard",
+    "Blue": "standard",
+    "Green": "standard",
+    "Yellow": "standard",
+    "Orange": "standard",
+    "Ocean Blue": "standard",
+    "Forest Green": "standard",
+    "Crimson Red": "standard",
+    "Silver": "metallic",
+    "Gold": "metallic",
+    "Bronze": "metallic",
+    "Copper": "metallic",
+    "Chrome": "metallic",
+    "Silk White": "silk",
+    "Silk Blue": "silk",
+    "Silk Red": "silk",
+    "Silk Green": "silk",
+    "Silk Gold": "silk",
+    "Silk Silver": "silk",
+    "Glow Green": "glow",
+    "Glow Blue": "glow",
+    "Glow White": "glow",
+    "Glow Orange": "glow",
+    "Clear": "transparent",
+    "Transparent Blue": "transparent",
+    "Transparent Red": "transparent",
+    "Transparent Green": "transparent",
+    "Matte Black": "matte",
+    "Matte White": "matte",
+    "Matte Gray": "matte",
+    "Rainbow": "rainbow",
+    "Galaxy": "rainbow",
+    "Marble": "rainbow"
+  }
+}
+

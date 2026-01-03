@@ -1,0 +1,28 @@
+{
+  "orderId": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+  "buyerWallet": "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD61",
+  "shipping": {
+    "address": {
+      "name": "Dr. Steve Brule",
+      "street1": "179 N Harbor Dr",
+      "city": "Redondo Beach",
+      "state": "CA",
+      "zip": "90277",
+      "country": "US",
+      "phone": "3108085243"
+    },
+    "parcel": {
+      "length": 8,
+      "width": 6,
+      "height": 4,
+      "weight": 12
+    }
+  },
+  "fileHash": "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
+  "escrowAmountEth": "0.05",
+  "material": "PLA",
+  "color": "Ocean Blue",
+  "infill": 20,
+  "createdAt": "2026-01-02T12:00:00.000Z"
+}
+
