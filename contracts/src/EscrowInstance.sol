@@ -55,6 +55,7 @@ contract EscrowInstance is IEscrowInstance, ReentrancyGuard {
     modifier onlyBuyer() { require(msg.sender == buyer, "!buyer"); _; }
     modifier onlySeller() { require(msg.sender == seller, "!seller"); _; }
     modifier onlyArbiter() { require(msg.sender == arbiter, "!arbiter"); _; }
+    modifier onlyOracle() { require(msg.sender == shippingOracle, "!oracle"); _; }
     modifier inStatus(Status s) { require(status == s, "!status"); _; }
     modifier reimburseGas() { uint256 g = gasleft(); _; _reimburse(msg.sender, g); }
 
@@ -209,6 +210,24 @@ contract EscrowInstance is IEscrowInstance, ReentrancyGuard {
     function finalizeArbiter() external inStatus(Status.ArbiterReview) reimburseGas nonReentrant {
         require(block.timestamp > arbiterReviewStartedAt + ARBITER_TIMEOUT, "wait");
         _settle(100, true); // Full refund to buyer with tax
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // ORACLE ACTIONS (called by shipping oracle backend)
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// @notice Oracle marks order as shipped (webhook: TRANSIT)
+    function oracleMarkShipped(uint256 timestamp) external onlyOracle inStatus(Status.Claimed) nonReentrant {
+        status = Status.Shipped;
+        shippedAt = timestamp > 0 ? timestamp : block.timestamp;
+        emit OrderShipped(shippedAt);
+    }
+
+    /// @notice Oracle marks order as delivered (webhook: DELIVERED)
+    function oracleMarkDelivered(uint256 timestamp) external onlyOracle inStatus(Status.Shipped) nonReentrant {
+        status = Status.Arrived;
+        arrivedAt = timestamp > 0 ? timestamp : block.timestamp;
+        emit DeliveryConfirmed(arrivedAt, true);
     }
 
     // ═══════════════════════════════════════════════════════════════════

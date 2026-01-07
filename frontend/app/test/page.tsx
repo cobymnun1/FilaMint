@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { ethers } from 'ethers';
 import { WalletProvider, useWalletContext } from '../context/WalletContext';
 import { 
   useCreateOrder,
@@ -315,21 +316,54 @@ function EscrowTestContent() {
     }
   };
 
-  // Helper to convert escrow address to bytes32 orderId
-  const addressToOrderId = (address: string): string => {
-    // Pad the address to 32 bytes (64 hex chars)
-    return '0x' + address.slice(2).toLowerCase().padStart(64, '0');
+  // Helper to get the actual orderId from the escrow contract
+  const getEscrowOrderId = async (address: string): Promise<string> => {
+    if (!window.ethereum) throw new Error('No wallet');
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const contract = new ethers.Contract(address, ['function orderId() view returns (bytes32)'], provider);
+    const orderId = await contract.orderId();
+    return orderId;
   };
 
   // Oracle actions (via backend direct endpoints)
+  const testRegisterEscrow = async () => {
+    if (!escrowAddress) return;
+    setOracleLoading(true);
+    
+    try {
+      const orderId = await getEscrowOrderId(escrowAddress);
+      log(`Got orderId from escrow: ${orderId.slice(0, 20)}...`);
+      log(`Registering escrow ${escrowAddress} with oracle...`);
+    
+      const res = await fetch(`${BACKEND_URL}/api/oracle/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, escrowAddress }),
+      });
+      
+      const result = await res.json();
+      
+      if (result.success) {
+        log(`SUCCESS: Escrow registered! TX: ${result.txHash}`);
+        log(`Now shipping updates will auto-update the escrow contract.`);
+      } else {
+        log(`ERROR: ${result.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      log(`ERROR: ${err instanceof Error ? err.message : 'Backend unreachable'}`);
+    } finally {
+      setOracleLoading(false);
+    }
+  };
+
   const testOracleShipped = async () => {
     if (!escrowAddress) return;
     setOracleLoading(true);
-    const orderId = addressToOrderId(escrowAddress);
-    
-    log(`Marking order ${orderId.slice(0, 20)}... as SHIPPED on-chain`);
     
     try {
+      const orderId = await getEscrowOrderId(escrowAddress);
+      log(`Marking order ${orderId.slice(0, 20)}... as SHIPPED on-chain`);
+    
       const res = await fetch(`${BACKEND_URL}/api/oracle/ship/${orderId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -343,8 +377,9 @@ function EscrowTestContent() {
         log(`ERROR: ${result.error || 'Unknown error'}`);
       }
       
-      // Refresh oracle status
+      // Refresh oracle status and escrow
       await testOracleStatus();
+      await refreshEscrow();
     } catch (err) {
       log(`ERROR: ${err instanceof Error ? err.message : 'Backend unreachable'}`);
     } finally {
@@ -355,11 +390,11 @@ function EscrowTestContent() {
   const testOracleDelivered = async () => {
     if (!escrowAddress) return;
     setOracleLoading(true);
-    const orderId = addressToOrderId(escrowAddress);
-    
-    log(`Marking order ${orderId.slice(0, 20)}... as DELIVERED on-chain`);
     
     try {
+      const orderId = await getEscrowOrderId(escrowAddress);
+      log(`Marking order ${orderId.slice(0, 20)}... as DELIVERED on-chain`);
+    
       const res = await fetch(`${BACKEND_URL}/api/oracle/deliver/${orderId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -374,8 +409,9 @@ function EscrowTestContent() {
         log(`ERROR: ${result.error || 'Unknown error'}`);
       }
       
-      // Refresh oracle status
+      // Refresh oracle status and escrow
       await testOracleStatus();
+      await refreshEscrow();
     } catch (err) {
       log(`ERROR: ${err instanceof Error ? err.message : 'Backend unreachable'}`);
     } finally {
@@ -386,11 +422,11 @@ function EscrowTestContent() {
   const testOracleStatus = async () => {
     if (!escrowAddress) return;
     setOracleLoading(true);
-    const orderId = addressToOrderId(escrowAddress);
-    
-    log(`Checking oracle status for ${orderId.slice(0, 20)}...`);
     
     try {
+      const orderId = await getEscrowOrderId(escrowAddress);
+      log(`Checking oracle status for ${orderId.slice(0, 20)}...`);
+    
       const res = await fetch(`${BACKEND_URL}/api/oracle/status/${orderId}`);
       const result = await res.json();
       
@@ -635,15 +671,19 @@ function EscrowTestContent() {
             {/* Shipping Oracle (Backend) */}
             <div className="p-4 bg-gray-800 rounded-xl border border-pink-700/50">
               <h2 className="text-lg font-semibold mb-3 text-pink-400">Shipping Oracle (Backend)</h2>
-              <p className="text-xs text-gray-400 mb-3">Simulates Shippo webhooks → updates on-chain oracle</p>
+              <p className="text-xs text-gray-400 mb-3">Links escrow to oracle, then simulates Shippo webhooks</p>
               <div className="grid grid-cols-2 gap-2">
+                <button onClick={testRegisterEscrow} disabled={oracleLoading || !escrowAddress}
+                  className="col-span-2 px-3 py-2 bg-pink-600 hover:bg-pink-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
+                  {oracleLoading ? '...' : '🔗 Register Escrow with Oracle'}
+                </button>
                 <button onClick={testOracleShipped} disabled={oracleLoading || !escrowAddress}
                   className="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
-                  {oracleLoading ? '...' : '📦 Simulate Shipped'}
+                  {oracleLoading ? '...' : '📦 Mark Shipped'}
                 </button>
                 <button onClick={testOracleDelivered} disabled={oracleLoading || !escrowAddress}
                   className="px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
-                  {oracleLoading ? '...' : '✅ Simulate Delivered'}
+                  {oracleLoading ? '...' : '✅ Mark Delivered'}
                 </button>
                 <button onClick={testOracleStatus} disabled={oracleLoading || !escrowAddress}
                   className="col-span-2 px-3 py-2 bg-gray-600 hover:bg-gray-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">

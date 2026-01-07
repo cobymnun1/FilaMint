@@ -2,13 +2,16 @@ import { ethers } from 'ethers';
 
 // ShippingOracle ABI - only the functions we need
 const ORACLE_ABI = [
+  'function registerEscrow(bytes32 orderId, address escrow) external',
   'function setShipped(bytes32 orderId) external',
   'function setDelivered(bytes32 orderId, uint256 timestamp) external',
   'function isDelivered(bytes32 orderId) external view returns (bool delivered, uint256 timestamp)',
   'function isShipped(bytes32 orderId) external view returns (bool shipped, uint256 timestamp)',
   'function getShipment(bytes32 orderId) external view returns (bool shipped, bool delivered, uint256 shippedAt, uint256 deliveredAt)',
-  'event Shipped(bytes32 indexed orderId, uint256 timestamp)',
-  'event Delivered(bytes32 indexed orderId, uint256 timestamp)',
+  'function shipments(bytes32 orderId) external view returns (bool shipped, bool delivered, uint64 shippedAt, uint64 deliveredAt, address escrow)',
+  'event Shipped(bytes32 indexed orderId, address indexed escrow, uint256 timestamp)',
+  'event Delivered(bytes32 indexed orderId, address indexed escrow, uint256 timestamp)',
+  'event EscrowRegistered(bytes32 indexed orderId, address indexed escrow)',
 ];
 
 // Singleton instances
@@ -16,18 +19,11 @@ let provider: ethers.JsonRpcProvider | null = null;
 let wallet: ethers.Wallet | null = null;
 let oracleContract: ethers.Contract | null = null;
 
-// Manual nonce management to handle concurrent transactions
-let currentNonce: number | null = null;
-let nonceInitialized = false;
-
+// Nonce management - always fetch latest to avoid sync issues
 async function getNextNonce(): Promise<number> {
   const w = getWallet();
-  if (!nonceInitialized) {
-    currentNonce = await w.getNonce('pending');
-    nonceInitialized = true;
-  }
-  const nonce = currentNonce!;
-  currentNonce = nonce + 1;
+  // Always get the latest pending nonce to handle restarts and failed txs
+  const nonce = await w.getNonce('pending');
   return nonce;
 }
 
@@ -81,6 +77,48 @@ export function getWallet(): ethers.Wallet {
 }
 
 /**
+ * Register an escrow contract with the oracle
+ * This links the orderId to the escrow so shipping updates propagate automatically
+ * @param orderId - The escrow order ID (bytes32 hex string)
+ * @param escrowAddress - The escrow contract address
+ * @returns Transaction receipt
+ */
+export async function registerEscrowWithOracle(
+  orderId: string,
+  escrowAddress: string
+): Promise<ethers.TransactionReceipt> {
+  const contract = getOracleContract();
+  
+  // Validate orderId format
+  if (!orderId.startsWith('0x') || orderId.length !== 66) {
+    throw new Error(`Invalid orderId format: ${orderId}. Expected 32-byte hex string.`);
+  }
+  
+  // Validate escrow address
+  if (!ethers.isAddress(escrowAddress)) {
+    throw new Error(`Invalid escrow address: ${escrowAddress}`);
+  }
+
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/628700ef-ed5a-468b-810b-6b52ce2010d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'oracle.ts:registerEscrowWithOracle',message:'Registering escrow',data:{orderId,escrowAddress},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2-escrow-not-registered'})}).catch(()=>{});
+  // #endregion
+
+  console.log(`Registering escrow ${escrowAddress} for order ${orderId}...`);
+  
+  const nonce = await getNextNonce();
+  const tx = await contract.registerEscrow(orderId, escrowAddress, { nonce });
+  const receipt = await tx.wait();
+  
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/628700ef-ed5a-468b-810b-6b52ce2010d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'oracle.ts:registerEscrowWithOracle:post',message:'Registration complete',data:{orderId,escrowAddress,txHash:receipt.hash},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2-escrow-not-registered'})}).catch(()=>{});
+  // #endregion
+
+  console.log(`Escrow registered. Tx: ${receipt.hash}`);
+  
+  return receipt;
+}
+
+/**
  * Mark an order as shipped on-chain
  * @param orderId - The escrow order ID (bytes32 hex string)
  * @returns Transaction receipt
@@ -99,6 +137,12 @@ export async function markShippedOnChain(orderId: string): Promise<ethers.Transa
     throw new Error(`Order ${orderId} is already marked as shipped`);
   }
 
+  // #region agent log
+  // Debug: Check shipment state before marking shipped
+  const shipment = await contract.getShipment(orderId);
+  fetch('http://127.0.0.1:7242/ingest/628700ef-ed5a-468b-810b-6b52ce2010d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'oracle.ts:markShippedOnChain',message:'Pre-ship check',data:{orderId,shipped:shipment[0],delivered:shipment[1],shippedAt:shipment[2]?.toString(),deliveredAt:shipment[3]?.toString()},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2-escrow-not-registered'})}).catch(()=>{});
+  // #endregion
+
   console.log(`Marking order ${orderId} as shipped...`);
   
   // Get next nonce from our manual counter
@@ -106,6 +150,11 @@ export async function markShippedOnChain(orderId: string): Promise<ethers.Transa
   const tx = await contract.setShipped(orderId, { nonce });
   const receipt = await tx.wait();
   
+  // #region agent log
+  // Debug: Log transaction result
+  fetch('http://127.0.0.1:7242/ingest/628700ef-ed5a-468b-810b-6b52ce2010d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'oracle.ts:markShippedOnChain:post',message:'Ship tx complete',data:{orderId,txHash:receipt.hash,gasUsed:receipt.gasUsed?.toString()},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5-silent-fail'})}).catch(()=>{});
+  // #endregion
+
   console.log(`Order ${orderId} marked as shipped. Tx: ${receipt.hash}`);
   
   return receipt;
@@ -169,7 +218,7 @@ export async function checkDelivered(orderId: string): Promise<{ delivered: bool
 }
 
 /**
- * Get full shipment record from oracle
+ * Get full shipment record from oracle (including registered escrow)
  * @param orderId - The escrow order ID
  */
 export async function getShipmentRecord(orderId: string): Promise<{
@@ -177,14 +226,17 @@ export async function getShipmentRecord(orderId: string): Promise<{
   delivered: boolean;
   shippedAt: number;
   deliveredAt: number;
+  escrow: string;
 }> {
   const contract = getOracleContract();
-  const [shipped, delivered, shippedAt, deliveredAt] = await contract.getShipment(orderId);
+  // Use the public mapping directly to get all fields including escrow
+  const [shipped, delivered, shippedAt, deliveredAt, escrow] = await contract.shipments(orderId);
   return {
     shipped,
     delivered,
     shippedAt: Number(shippedAt),
     deliveredAt: Number(deliveredAt),
+    escrow,
   };
 }
 

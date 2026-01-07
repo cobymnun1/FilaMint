@@ -21,6 +21,7 @@ import {
 
 import {
   initOracle,
+  registerEscrowWithOracle,
   markShippedOnChain,
   markDeliveredOnChain,
   getShipmentRecord,
@@ -359,6 +360,27 @@ app.post('/api/oracle/deliver/:orderId', async (req: Request, res: Response, nex
     const { orderId } = req.params;
     const timestamp = req.body.timestamp || 0;
     const receipt = await markDeliveredOnChain(orderId, timestamp);
+    res.json({ success: true, txHash: receipt.hash });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/oracle/register
+ * Register an escrow contract with the oracle
+ * Body: { orderId: string, escrowAddress: string }
+ */
+app.post('/api/oracle/register', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { orderId, escrowAddress } = req.body;
+    
+    if (!orderId || !escrowAddress) {
+      res.status(400).json({ error: 'Missing required fields: orderId, escrowAddress' });
+      return;
+    }
+    
+    const receipt = await registerEscrowWithOracle(orderId, escrowAddress);
     res.json({ success: true, txHash: receipt.hash });
   } catch (err) {
     next(err);

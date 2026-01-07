@@ -4,7 +4,13 @@ pragma solidity ^0.8.24;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./interfaces/IShippingOracle.sol";
 
-/// @title ShippingOracle - Stores shipping status for escrow orders
+/// @dev Interface for escrow oracle actions
+interface IEscrowOracleActions {
+    function oracleMarkShipped(uint256 timestamp) external;
+    function oracleMarkDelivered(uint256 timestamp) external;
+}
+
+/// @title ShippingOracle - Stores shipping status and updates escrow contracts
 /// @notice Backend service calls this when Shippo webhooks report shipping events
 /// @dev Only owner (backend wallet) can update shipping status
 contract ShippingOracle is IShippingOracle, Ownable {
@@ -13,14 +19,28 @@ contract ShippingOracle is IShippingOracle, Ownable {
         bool delivered;
         uint64 shippedAt;
         uint64 deliveredAt;
+        address escrow;  // Associated escrow contract
     }
 
     mapping(bytes32 => ShipmentRecord) public shipments;
 
-    event Shipped(bytes32 indexed orderId, uint256 timestamp);
-    event Delivered(bytes32 indexed orderId, uint256 timestamp);
+    event Shipped(bytes32 indexed orderId, address indexed escrow, uint256 timestamp);
+    event Delivered(bytes32 indexed orderId, address indexed escrow, uint256 timestamp);
+    event EscrowRegistered(bytes32 indexed orderId, address indexed escrow);
 
     constructor() Ownable(msg.sender) {}
+
+    /// @notice Register an escrow contract for an order (called when label is created)
+    /// @param orderId The escrow order ID
+    /// @param escrow The escrow contract address
+    function registerEscrow(bytes32 orderId, address escrow) external onlyOwner {
+        require(orderId != bytes32(0), "invalid orderId");
+        require(escrow != address(0), "invalid escrow");
+        require(shipments[orderId].escrow == address(0), "already registered");
+        
+        shipments[orderId].escrow = escrow;
+        emit EscrowRegistered(orderId, escrow);
+    }
 
     /// @notice Mark order as shipped (called when carrier picks up package)
     /// @param orderId The escrow order ID
@@ -28,10 +48,21 @@ contract ShippingOracle is IShippingOracle, Ownable {
         require(orderId != bytes32(0), "invalid orderId");
         require(!shipments[orderId].shipped, "already shipped");
         
+        uint64 timestamp = uint64(block.timestamp);
         shipments[orderId].shipped = true;
-        shipments[orderId].shippedAt = uint64(block.timestamp);
+        shipments[orderId].shippedAt = timestamp;
         
-        emit Shipped(orderId, block.timestamp);
+        // Update escrow contract if registered
+        address escrow = shipments[orderId].escrow;
+        if (escrow != address(0)) {
+            try IEscrowOracleActions(escrow).oracleMarkShipped(timestamp) {
+                // Success
+            } catch {
+                // Escrow may not be in correct state, that's ok
+            }
+        }
+        
+        emit Shipped(orderId, escrow, block.timestamp);
     }
 
     /// @notice Mark order as delivered (called when carrier confirms delivery)
@@ -53,7 +84,17 @@ contract ShippingOracle is IShippingOracle, Ownable {
             shipments[orderId].shippedAt = deliveryTime;
         }
         
-        emit Delivered(orderId, deliveryTime);
+        // Update escrow contract if registered
+        address escrow = shipments[orderId].escrow;
+        if (escrow != address(0)) {
+            try IEscrowOracleActions(escrow).oracleMarkDelivered(deliveryTime) {
+                // Success
+            } catch {
+                // Escrow may not be in correct state, that's ok
+            }
+        }
+        
+        emit Delivered(orderId, escrow, deliveryTime);
     }
 
     /// @notice Check if order has been delivered (implements IShippingOracle)
