@@ -4,17 +4,26 @@
   "description": "PrintMod shipping and backend utilities",
   "type": "module",
   "scripts": {
-    "test:shipping": "npx ts-node --esm shipping/test.ts",
-    "benchmark": "npx ts-node --esm ../tests/pricing/runBenchmark.ts"
+    "start": "npx tsx server.ts",
+    "dev": "npx tsx server.ts",
+    "test:label": "npx tsx shipping/test-label.ts",
+    "test:shipping": "npx tsx shipping/test.ts",
+    "benchmark": "npx tsx ../tests/pricing/runBenchmark.ts"
   },
   "dependencies": {
+    "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "node-stl": "^0.7.1"
+    "ethers": "^6.9.0",
+    "express": "^4.18.2",
+    "node-stl": "^0.7.1",
+    "shippo": "^2.15.0",
+    "tsx": "^4.21.0"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
     "@types/node": "^20.10.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.2"
   }
 }
-

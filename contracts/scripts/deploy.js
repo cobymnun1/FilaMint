@@ -15,7 +15,21 @@ async function main() {
   console.log("Deploying contracts with account:", deployer.address);
   console.log("Account balance:", (await hre.ethers.provider.getBalance(deployer.address)).toString());
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Deploy ShippingOracle
+  // ═══════════════════════════════════════════════════════════════════════════
+  console.log("\n--- Deploying ShippingOracle ---");
+  const ShippingOracle = await hre.ethers.getContractFactory("ShippingOracle");
+  const oracle = await ShippingOracle.deploy();
+  await oracle.waitForDeployment();
+  const oracleAddress = await oracle.getAddress();
+  console.log("ShippingOracle deployed to:", oracleAddress);
+  console.log("Oracle owner (backend wallet):", await oracle.owner());
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // Deploy PrintEscrowFactory
+  // ═══════════════════════════════════════════════════════════════════════════
+  console.log("\n--- Deploying PrintEscrowFactory ---");
   // Parameters:
   // - arbiter: Address that receives ALL fees and can resolve disputes (your cold wallet)
   // - minOrderAmount: Minimum order in wei (0.001 ETH = 1e15 wei)
@@ -28,17 +42,46 @@ async function main() {
   await factory.waitForDeployment();
   const factoryAddress = await factory.getAddress();
 
-  console.log("\n=== Deployment Complete ===");
   console.log("PrintEscrowFactory deployed to:", factoryAddress);
   console.log("Implementation (EscrowInstance):", await factory.implementation());
   console.log("Arbiter/Fee Recipient:", await factory.arbiter());
   console.log("Min order amount:", hre.ethers.formatEther(await factory.minOrderAmount()), "ETH");
 
-  console.log("\n=== Next Steps ===");
-  console.log("1. Update frontend/.env.local with:");
-  console.log(`   NEXT_PUBLIC_ESCROW_FACTORY_ADDRESS=${factoryAddress}`);
-  console.log("2. To change arbiter/fee recipient later: factory.setArbiter(newAddress)");
-  console.log("3. Optionally call setShippingOracle() when oracle is ready");
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Configure Factory with Oracle
+  // ═══════════════════════════════════════════════════════════════════════════
+  console.log("\n--- Configuring Factory ---");
+  const setOracleTx = await factory.setShippingOracle(oracleAddress);
+  await setOracleTx.wait();
+  console.log("ShippingOracle set on factory:", await factory.shippingOracle());
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Summary
+  // ═══════════════════════════════════════════════════════════════════════════
+  console.log("\n╔═══════════════════════════════════════════════════════════════╗");
+  console.log("║               DEPLOYMENT COMPLETE                              ║");
+  console.log("╠═══════════════════════════════════════════════════════════════╣");
+  console.log(`║ ShippingOracle:      ${oracleAddress} ║`);
+  console.log(`║ PrintEscrowFactory:  ${factoryAddress} ║`);
+  console.log("╚═══════════════════════════════════════════════════════════════╝");
+
+  console.log("\n=== Environment Variables ===");
+  console.log("Add these to your .env files:\n");
+  console.log("# frontend/.env.local");
+  console.log(`NEXT_PUBLIC_ESCROW_FACTORY_ADDRESS=${factoryAddress}`);
+  console.log(`NEXT_PUBLIC_CHAIN_ID=31337`);
+  console.log("");
+  console.log("# backend/.env.back");
+  console.log(`ORACLE_ADDRESS=${oracleAddress}`);
+  console.log(`RPC_URL=http://localhost:8545`);
+  console.log(`BACKEND_PRIVATE_KEY=<deployer-private-key>`);
+  console.log("");
+
+  console.log("=== Notes ===");
+  console.log("1. The deployer account owns the ShippingOracle");
+  console.log("2. Only the oracle owner can call setShipped/setDelivered");
+  console.log("3. Transfer oracle ownership if using a different backend wallet:");
+  console.log("   oracle.transferOwnership(backendWalletAddress)");
 }
 
 main()
@@ -47,4 +90,3 @@ main()
     console.error(error);
     process.exit(1);
   });
-

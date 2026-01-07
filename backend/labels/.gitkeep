@@ -1,3 +1,7 @@
-# This folder stores generated shipping labels
-# Labels are gitignored - this file just keeps the folder in git
+# Labels Directory
 
+This directory stores downloaded shipping label PDFs.
+Files are named: `{orderId-prefix}-{trackingNumber}.pdf`
+
+The directory is created automatically by the shipping service.
+Label files should not be committed to version control.

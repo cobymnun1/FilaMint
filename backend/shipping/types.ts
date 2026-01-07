@@ -31,6 +31,12 @@ export interface ShippingData {
   parcel: Parcel;
 }
 
+export interface LabelRequest {
+  fromAddress: Address;  // Seller's address
+  toAddress: Address;    // Buyer's address
+  parcel: Parcel;
+}
+
 export interface PrintOrder {
   orderId: string;
   buyerWallet: string;

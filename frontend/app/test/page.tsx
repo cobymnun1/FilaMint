@@ -27,6 +27,16 @@ import {
   CONTRACT_ADDRESSES,
 } from '../hooks/useContract';
 
+// Backend API URL for shipping oracle
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+
+interface OracleStatus {
+  shipped: boolean;
+  delivered: boolean;
+  shippedAt: number;
+  deliveredAt: number;
+}
+
 function EscrowTestContent() {
   const [escrowAddress, setEscrowAddress] = useState('');
   const [fileHash, setFileHash] = useState('test-model.stl');
@@ -34,6 +44,8 @@ function EscrowTestContent() {
   const [offerPercent, setOfferPercent] = useState(50);
   const [escrowData, setEscrowData] = useState<EscrowData | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  const [oracleLoading, setOracleLoading] = useState(false);
+  const [oracleStatus, setOracleStatus] = useState<OracleStatus | null>(null);
   
   const { 
     walletAddress,
@@ -303,6 +315,103 @@ function EscrowTestContent() {
     }
   };
 
+  // Helper to convert escrow address to bytes32 orderId
+  const addressToOrderId = (address: string): string => {
+    // Pad the address to 32 bytes (64 hex chars)
+    return '0x' + address.slice(2).toLowerCase().padStart(64, '0');
+  };
+
+  // Oracle actions (via backend direct endpoints)
+  const testOracleShipped = async () => {
+    if (!escrowAddress) return;
+    setOracleLoading(true);
+    const orderId = addressToOrderId(escrowAddress);
+    
+    log(`Marking order ${orderId.slice(0, 20)}... as SHIPPED on-chain`);
+    
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/oracle/ship/${orderId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      const result = await res.json();
+      
+      if (result.success) {
+        log(`SUCCESS: Shipped on-chain! TX: ${result.txHash}`);
+      } else {
+        log(`ERROR: ${result.error || 'Unknown error'}`);
+      }
+      
+      // Refresh oracle status
+      await testOracleStatus();
+    } catch (err) {
+      log(`ERROR: ${err instanceof Error ? err.message : 'Backend unreachable'}`);
+    } finally {
+      setOracleLoading(false);
+    }
+  };
+
+  const testOracleDelivered = async () => {
+    if (!escrowAddress) return;
+    setOracleLoading(true);
+    const orderId = addressToOrderId(escrowAddress);
+    
+    log(`Marking order ${orderId.slice(0, 20)}... as DELIVERED on-chain`);
+    
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/oracle/deliver/${orderId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timestamp: Math.floor(Date.now() / 1000) }),
+      });
+      
+      const result = await res.json();
+      
+      if (result.success) {
+        log(`SUCCESS: Delivered on-chain! TX: ${result.txHash}`);
+      } else {
+        log(`ERROR: ${result.error || 'Unknown error'}`);
+      }
+      
+      // Refresh oracle status
+      await testOracleStatus();
+    } catch (err) {
+      log(`ERROR: ${err instanceof Error ? err.message : 'Backend unreachable'}`);
+    } finally {
+      setOracleLoading(false);
+    }
+  };
+
+  const testOracleStatus = async () => {
+    if (!escrowAddress) return;
+    setOracleLoading(true);
+    const orderId = addressToOrderId(escrowAddress);
+    
+    log(`Checking oracle status for ${orderId.slice(0, 20)}...`);
+    
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/oracle/status/${orderId}`);
+      const result = await res.json();
+      
+      if (result.success) {
+        setOracleStatus({
+          shipped: result.shipped,
+          delivered: result.delivered,
+          shippedAt: result.shippedAt,
+          deliveredAt: result.deliveredAt,
+        });
+        log(`Oracle: shipped=${result.shipped}, delivered=${result.delivered}`);
+      } else {
+        log(`ERROR: ${result.error}`);
+      }
+    } catch (err) {
+      log(`ERROR: ${err instanceof Error ? err.message : 'Backend unreachable'}`);
+    } finally {
+      setOracleLoading(false);
+    }
+  };
+
   const truncate = (addr: string | null) => {
     if (!addr) return 'Not set';
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
@@ -521,6 +630,37 @@ function EscrowTestContent() {
                   {arbiterLoading ? '...' : 'Arbiter Decide'}
                 </button>
               </div>
+            </div>
+
+            {/* Shipping Oracle (Backend) */}
+            <div className="p-4 bg-gray-800 rounded-xl border border-pink-700/50">
+              <h2 className="text-lg font-semibold mb-3 text-pink-400">Shipping Oracle (Backend)</h2>
+              <p className="text-xs text-gray-400 mb-3">Simulates Shippo webhooks → updates on-chain oracle</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={testOracleShipped} disabled={oracleLoading || !escrowAddress}
+                  className="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
+                  {oracleLoading ? '...' : '📦 Simulate Shipped'}
+                </button>
+                <button onClick={testOracleDelivered} disabled={oracleLoading || !escrowAddress}
+                  className="px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
+                  {oracleLoading ? '...' : '✅ Simulate Delivered'}
+                </button>
+                <button onClick={testOracleStatus} disabled={oracleLoading || !escrowAddress}
+                  className="col-span-2 px-3 py-2 bg-gray-600 hover:bg-gray-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
+                  {oracleLoading ? '...' : '🔍 Check Oracle Status'}
+                </button>
+              </div>
+              {oracleStatus && (
+                <div className="mt-3 p-2 bg-gray-900 rounded text-xs font-mono">
+                  <p className="text-gray-400">Oracle Status:</p>
+                  <p className={oracleStatus.shipped ? 'text-cyan-400' : 'text-gray-500'}>
+                    Shipped: {oracleStatus.shipped ? `Yes (${new Date(oracleStatus.shippedAt * 1000).toLocaleString()})` : 'No'}
+                  </p>
+                  <p className={oracleStatus.delivered ? 'text-purple-400' : 'text-gray-500'}>
+                    Delivered: {oracleStatus.delivered ? `Yes (${new Date(oracleStatus.deliveredAt * 1000).toLocaleString()})` : 'No'}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Offer Slider */}
