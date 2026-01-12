@@ -8,8 +8,11 @@ out/
 
 # Environment variables
 .env
+.env.*
 .env.local
 .env.*.local
+*.env
+*.env.*
 
 # Generated labels (contain sensitive mock data)
 labels/*.png

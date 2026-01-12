@@ -33,7 +33,7 @@ async function getNextNonce(): Promise<number> {
  */
 export function initOracle(): { provider: ethers.JsonRpcProvider; wallet: ethers.Wallet; contract: ethers.Contract } {
   // Read env vars at runtime (after dotenv has loaded them)
-  const RPC_URL = process.env.RPC_URL || 'http://localhost:8545';
+  const RPC_URL = process.env.RPC_URL || 'https://sepolia.base.org';
   const BACKEND_PRIVATE_KEY = process.env.BACKEND_PRIVATE_KEY || '';
   const ORACLE_ADDRESS = process.env.ORACLE_ADDRESS || '';
 

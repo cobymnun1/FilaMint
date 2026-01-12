@@ -6,6 +6,8 @@ dist/
 
 # Environment variables
 .env
+.env.*
+.env.back
 .env.local
 .env.*.local
 

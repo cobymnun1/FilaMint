@@ -64,6 +64,10 @@ export const ESCROW_ABI = [
   'function finalizeArbiter()',
   // Arbiter action
   'function arbiterDecide(uint8 pct)',
+  // Label storage
+  'function labelCid() view returns (string)',
+  'function setLabelCid(string cid)',
+  'event LabelCidSet(string cid)',
   // Events
   'event OrderClaimed(address indexed seller, uint256 timestamp)',
   'event OrderShipped(uint256 timestamp)',
@@ -275,7 +279,7 @@ export function useCreateOrder() {
       let errorMessage = err instanceof Error ? err.message : 'Transaction failed';
       // Parse common errors for better UX
       if (errorMessage.includes('insufficient funds') || errorMessage.includes('INSUFFICIENT_FUNDS')) {
-        errorMessage = 'Insufficient funds. Make sure your wallet has enough ETH and is connected to the correct network (Hardhat localhost:8545).';
+        errorMessage = 'Insufficient funds. Make sure your wallet has enough ETH and is connected to Base Sepolia testnet.';
       } else if (errorMessage.includes('user rejected') || errorMessage.includes('User denied')) {
         errorMessage = 'Transaction rejected by user.';
       }
@@ -884,4 +888,49 @@ export function formatTimeRemaining(seconds: number): string {
   if (days > 0) return `${days}d ${hours}h`;
   if (hours > 0) return `${hours}h ${mins}m`;
   return `${mins}m`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LABEL STORAGE HOOKS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Hook for setting the label CID on an escrow (buyer only)
+ */
+export function useSetLabelCid() {
+  const { getContract } = useContractInstance();
+  const [state, setState] = useState<ContractCallResult<{ txHash: string }>>({
+    data: null, error: null, isLoading: false,
+  });
+
+  const setLabelCid = useCallback(async (escrowAddress: string, cid: string) => {
+    setState({ data: null, error: null, isLoading: true });
+    try {
+      const contract = await getContract(escrowAddress, ESCROW_ABI);
+      const tx = await contract.setLabelCid(cid);
+      const receipt = await tx.wait();
+      setState({ data: { txHash: receipt.hash }, error: null, isLoading: false });
+      return { txHash: receipt.hash };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      setState({ data: null, error: errorMessage, isLoading: false });
+      throw err;
+    }
+  }, [getContract]);
+
+  return { setLabelCid, ...state };
+}
+
+/**
+ * Hook for reading the label CID from an escrow
+ */
+export function useGetLabelCid() {
+  const { getReadOnlyContract } = useContractInstance();
+
+  const getLabelCid = useCallback(async (escrowAddress: string): Promise<string> => {
+    const contract = getReadOnlyContract(escrowAddress, ESCROW_ABI);
+    return await contract.labelCid();
+  }, [getReadOnlyContract]);
+
+  return { getLabelCid };
 }
